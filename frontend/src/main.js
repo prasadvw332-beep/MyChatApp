@@ -94,8 +94,10 @@ $("theme").addEventListener("click", () => {
 
 /* ---------- chats state ---------- */
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-let chats = load("chats", []);
-let chat = chats.find((c) => c.id === load("activeChat", null)) || chats[0];
+// Chats live in PostgreSQL (see /chats); they are loaded once at startup by loadChats().
+// Only the id of the open chat is a per-browser preference.
+let chats = [];
+let chat;
 let controller = null; // set while a reply is streaming
 
 function createChat() {
@@ -103,11 +105,66 @@ function createChat() {
   chats.unshift(c);
   return c;
 }
-if (!chat) chat = createChat();
+chat = createChat();
+
+// What the server has for each chat (as JSON), so persist() only sends chats that changed
+const saved = new Map();
+const chatKey = (c) => JSON.stringify([c.title, c.titleBy, c.titledAt, c.messages]);
+let syncFailed = false;
+
+async function syncChat(c) {
+  const key = chatKey(c);
+  try {
+    const res = await fetch(`${API_BASE}/chats/${encodeURIComponent(c.id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: c.title, titleBy: c.titleBy ?? null, titledAt: c.titledAt ?? null,
+        updatedAt: c.updatedAt, messages: c.messages,
+      }),
+    });
+    if (!res.ok) throw new Error(await errorFrom(res));
+    saved.set(c.id, key);
+    syncFailed = false;
+  } catch (err) {
+    if (!syncFailed) console.warn("Could not save chat to the server:", err.message);
+    syncFailed = true;
+  }
+}
 
 function persist() {
-  store("chats", chats);
   store("activeChat", chat.id);
+  for (const c of chats) {
+    if (c.messages.length && saved.get(c.id) !== chatKey(c)) syncChat(c);
+  }
+}
+
+async function loadChats() {
+  let remote = [];
+  try {
+    const res = await fetch(API_BASE + "/chats");
+    if (!res.ok) throw new Error(await errorFrom(res));
+    remote = await res.json();
+  } catch (err) {
+    console.warn("Could not load chats from the server:", err.message);
+    chatList.replaceChildren(el("div", "empty-note error", "Can't load chat history: " + err.message));
+    return;
+  }
+  remote.forEach((c) => saved.set(c.id, chatKey(c)));
+
+  // one-time import of chats that were kept in this browser before they moved to the database
+  const legacy = remote.length ? [] : load("chats", []).filter((c) => c.messages?.length);
+  const local = chats.filter((c) => c.messages.length); // started typing before the load finished
+  const startedFresh = chat;
+  chats = [...remote, ...legacy, ...local];
+  const wanted = load("activeChat", null);
+  chat = local[0] || chats.find((c) => c.id === wanted) || chats[0] || startedFresh;
+  if (!chats.includes(chat)) chats.unshift(chat);
+  if (legacy.length) {
+    persist();
+    try { localStorage.removeItem("chats"); } catch {}
+  }
+  renderAll();
 }
 
 /* ---------- sidebar ---------- */
@@ -152,6 +209,8 @@ function newChat() {
 function deleteChat(id) {
   if (controller && chat.id === id) controller.abort();
   chats = chats.filter((c) => c.id !== id);
+  saved.delete(id);
+  fetch(`${API_BASE}/chats/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
   if (chat.id === id) chat = chats.find((c) => c.messages.length) || createChat();
   persist();
   renderAll();
@@ -389,7 +448,7 @@ function updateSend() {
 function submit(text) {
   text = text.trim();
   if (!text || controller) return;
-  chat.messages.push({ role: "user", content: text });
+  chat.messages.push({ role: "user", content: text, at: Date.now() });
   if (chat.messages.length === 1) chat.title = text.length > 40 ? text.slice(0, 40) + "…" : text;
   generate();
 }
@@ -450,7 +509,7 @@ function startEdit(i) {
 
 async function generate() {
   const c = chat;
-  const reply = { role: "assistant", content: "" };
+  const reply = { role: "assistant", content: "", at: Date.now() };
   c.messages.push(reply);
   c.updatedAt = Date.now();
   controller = new AbortController();
@@ -572,6 +631,13 @@ function setDocsCollapsed(collapsed) {
 setDocsCollapsed(load("docsCollapsed", false));
 $("docs-toggle").addEventListener("click", () => setDocsCollapsed(!docsSection.classList.contains("collapsed")));
 
+function fmtSize(n) {
+  if (!n) return "";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
+
 function pendingRow(p) {
   const item = el("div", `doc-item pending ${p.state}`);
   const text = el("div", "doc-text");
@@ -618,7 +684,10 @@ function renderDocs() {
     name.href = fileUrl(d.doc_id);
     name.target = "_blank";
     name.rel = "noopener noreferrer";
-    text.append(name, el("span", "doc-meta", `${d.chunks} chunk${d.chunks === 1 ? "" : "s"}`));
+    const meta = d.status === "ready"
+      ? [fmtSize(d.size_bytes), `${d.chunks} chunk${d.chunks === 1 ? "" : "s"}`].filter(Boolean).join(" · ")
+      : "Indexing…";
+    text.append(name, el("span", "doc-meta", meta));
 
     const actions = el("div", "item-actions");
     const del = el("button", "danger");
@@ -747,3 +816,4 @@ document.querySelectorAll(".suggestion").forEach((s) =>
 renderAll();
 updateSend();
 refreshDocs();
+loadChats();

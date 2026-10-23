@@ -6,7 +6,7 @@ Run from backend/ (Ollama and Qdrant must be running, documents already uploaded
     uv run python -m evals.run_ragas --limit 3 --metrics faithfulness answer_relevancy
 
 The same run can be started from the app's Evaluation page (POST /evals/run).
-Results are saved as JSON in evals/results/, which is where the page reads them from.
+Results are saved to the eval_runs table in PostgreSQL (DATABASE_URL), which is where the page reads them from.
 
 Two phases, so Ollama doesn't swap models on every question:
   1. Answer every question with the app's own pipeline (rag.retrieve + build_messages + llm).
@@ -31,7 +31,11 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from sqlalchemy import select
+
 from app.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
+from app.db import SessionLocal, init_db
+from app.models import EvalRun
 from app.schemas import Message
 from app.services import rag
 from app.services.answer import build_messages
@@ -44,7 +48,6 @@ EVAL_EMBED_MODEL = os.getenv("EVAL_EMBED_MODEL", EMBED_MODEL)
 
 HERE = Path(__file__).parent
 DATASET = HERE / "dataset.jsonl"
-RESULTS_DIR = HERE / "results"
 DEFAULT_METRICS = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"]
 ALL_METRICS = DEFAULT_METRICS + ["answer_correctness"]
 # metrics that judge the retrieved chunks; meaningless when retrieval returned nothing
@@ -157,7 +160,7 @@ async def run(
     dataset: Path = DATASET,
     progress: Progress = lambda *_: None,
 ) -> dict:
-    """Run a full evaluation, save it to RESULTS_DIR and return it."""
+    """Run a full evaluation, save it to PostgreSQL and return it."""
     rows = load_dataset(dataset, limit)
     if not rows:
         raise ValueError(f"No questions in {dataset}")
@@ -189,27 +192,42 @@ async def run(
             for r in rows
         ],
     }
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    (RESULTS_DIR / f"{result['id']}.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
+    await asyncio.to_thread(save_run, result)
     return result
+
+
+def save_run(result: dict) -> None:
+    init_db()
+    fields = {k: v for k, v in result.items() if k != "created_at"}
+    with SessionLocal.begin() as db:
+        db.add(EvalRun(**fields, created_at=datetime.fromisoformat(result["created_at"])))
+
+
+def _to_dict(run: EvalRun) -> dict:
+    return {
+        "id": run.id,
+        "created_at": run.created_at.isoformat(timespec="seconds"),
+        "duration_s": run.duration_s,
+        "chat_model": run.chat_model,
+        "judge_model": run.judge_model,
+        "metrics": run.metrics,
+        "summary": run.summary,
+        "scored": run.scored,
+        "no_context": run.no_context,
+    }
 
 
 def list_runs() -> list[dict]:
     """Saved runs, newest first, without the per-question rows."""
-    runs = []
-    for path in sorted(RESULTS_DIR.glob("*.json"), reverse=True):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        data["questions"] = len(data.pop("rows", []))
-        runs.append(data)
-    return runs
+    with SessionLocal() as db:
+        runs = db.scalars(select(EvalRun).order_by(EvalRun.created_at.desc())).all()
+        return [{**_to_dict(r), "questions": len(r.rows)} for r in runs]
 
 
 def load_run(run_id: str) -> dict | None:
-    path = RESULTS_DIR / f"{run_id}.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else None
+    with SessionLocal() as db:
+        run = db.get(EvalRun, run_id)
+        return {**_to_dict(run), "rows": run.rows} if run else None
 
 
 def main() -> None:
@@ -234,7 +252,7 @@ def main() -> None:
     if result["no_context"]:
         print(f"\n  {result['no_context']} question(s) retrieved no chunks (best score < MIN_SCORE); "
               "context metrics are skipped for them.")
-    print(f"\nSaved {RESULTS_DIR / (result['id'] + '.json')}  ({result['duration_s']}s)")
+    print(f"\nSaved run {result['id']} to PostgreSQL  ({result['duration_s']}s)")
 
 
 if __name__ == "__main__":

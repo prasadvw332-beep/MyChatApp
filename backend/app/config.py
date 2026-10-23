@@ -15,6 +15,9 @@ QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "documents_v2")
 # Measured with nomic-embed-text + prefixes: related questions >= ~0.60, unrelated <= ~0.57.
 MIN_SCORE = float(os.getenv("MIN_SCORE", "0.58"))
 
+# PostgreSQL (app data: eval results)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/mychatapp")
+
 # MinIO
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")

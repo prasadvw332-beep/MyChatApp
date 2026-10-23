@@ -1,0 +1,104 @@
+"""Document metadata in PostgreSQL (filename, size, hash, chunk count, MinIO key, status, tags)."""
+
+import hashlib
+import os
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+
+from app.db import SessionLocal
+from app.models import Document
+
+
+def sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def find_duplicate(digest: str) -> Document | None:
+    with SessionLocal() as db:
+        return db.scalars(select(Document).where(Document.sha256 == digest, Document.status == "ready")).first()
+
+
+def create(doc_id: str, filename: str, data: bytes, digest: str) -> None:
+    with SessionLocal.begin() as db:
+        db.add(Document(
+            doc_id=doc_id, filename=filename, ext=os.path.splitext(filename)[1].lower().lstrip("."),
+            size_bytes=len(data), sha256=digest, minio_key=f"{doc_id}/{filename}",
+            status="indexing", uploaded_at=datetime.now(timezone.utc),
+        ))
+
+
+def mark_ready(doc_id: str, chunks: int) -> None:
+    with SessionLocal.begin() as db:
+        doc = db.get(Document, doc_id)
+        doc.chunks, doc.status = chunks, "ready"
+
+
+def delete(doc_id: str) -> None:
+    with SessionLocal.begin() as db:
+        doc = db.get(Document, doc_id)
+        if doc:
+            db.delete(doc)
+
+
+def ids_for_filename(filename: str) -> set[str]:
+    with SessionLocal() as db:
+        return set(db.scalars(select(Document.doc_id).where(Document.filename == filename)))
+
+
+def _out(d: Document) -> dict:
+    return {
+        "doc_id": d.doc_id, "filename": d.filename, "chunks": d.chunks, "size_bytes": d.size_bytes,
+        "ext": d.ext, "status": d.status, "tags": d.tags or [],
+        "uploaded_at": d.uploaded_at.isoformat(timespec="seconds"),
+    }
+
+
+def list_all() -> list[dict]:
+    with SessionLocal() as db:
+        docs = db.scalars(select(Document).order_by(Document.filename)).all()
+        return [_out(d) for d in docs]
+
+
+def set_tags(doc_id: str, tags: list[str]) -> dict | None:
+    with SessionLocal.begin() as db:
+        doc = db.get(Document, doc_id)
+        if not doc:
+            return None
+        doc.tags = tags
+        return _out(doc)
+
+
+def backfill(qdrant_docs: list[dict], storage) -> int:
+    """Add rows for documents indexed before this table existed (known to Qdrant, missing here)."""
+    with SessionLocal() as db:
+        known = set(db.scalars(select(Document.doc_id)))
+    added = 0
+    for d in qdrant_docs:
+        if d["doc_id"] in known or d["doc_id"] == "?":
+            continue
+        key, size, digest, uploaded = None, 0, None, datetime.now(timezone.utc)
+        try:
+            key = storage.find(d["doc_id"])
+            if key:
+                obj = storage.open_file(key)
+                try:
+                    data = obj.read()
+                    modified = obj.headers.get("Last-Modified")
+                finally:
+                    obj.close()
+                    obj.release_conn()
+                size, digest = len(data), sha256(data)
+                if modified:
+                    uploaded = datetime.strptime(modified, "%a, %d %b %Y %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+        except Exception:
+            pass  # metadata is best-effort for old documents
+        with SessionLocal.begin() as db:
+            db.add(Document(
+                doc_id=d["doc_id"], filename=d["filename"],
+                ext=os.path.splitext(d["filename"])[1].lower().lstrip("."),
+                size_bytes=size, sha256=digest, chunks=d["chunks"], minio_key=key,
+                status="ready", uploaded_at=uploaded,
+            ))
+        added += 1
+    return added
