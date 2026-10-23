@@ -1,11 +1,11 @@
 import "./style.css";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { API_BASE, $, el, errorFrom } from "./lib.js";
+import { initEvals } from "./evals.js";
 
-const API_BASE = "http://localhost:8000";
 const API = API_BASE + "/chat";
 const fileUrl = (docId) => `${API_BASE}/documents/${encodeURIComponent(docId)}/file`;
-const $ = (id) => document.getElementById(id);
 const box = $("messages");
 const form = $("form");
 const input = $("input");
@@ -37,23 +37,6 @@ const ICON = {
   file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>'),
   close: svg('<path d="M18 6 6 18M6 6l12 12"/>', 12),
 };
-
-// Readable message from a failed fetch response (FastAPI sends {detail})
-async function errorFrom(res) {
-  try {
-    const body = await res.json();
-    if (body.detail) return typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
-  } catch {}
-  return "Server error " + res.status;
-}
-
-// Small helper for building DOM nodes
-function el(tag, className, text) {
-  const n = document.createElement(tag);
-  if (className) n.className = className;
-  if (text != null) n.textContent = text;
-  return n;
-}
 
 // Two-step delete: first click arms the button ("Delete"), second click confirms
 function confirmDelete(btn, onConfirm) {
@@ -139,7 +122,11 @@ $("menu").addEventListener("click", () => setSidebar(true));
 $("collapse").addEventListener("click", () => setSidebar(false));
 $("backdrop").addEventListener("click", () => layout.classList.remove("sidebar-open"));
 
+const evals = initEvals({ button: $("evals-btn"), view: $("evals"), app: $("app"), onToggle: () => renderList() });
+$("evals-btn").addEventListener("click", closeSidebarOnMobile);
+
 function selectChat(id) {
+  evals.hide();
   const target = chats.find((c) => c.id === id);
   if (!target || target === chat) return closeSidebarOnMobile();
   if (controller) controller.abort();
@@ -151,6 +138,7 @@ function selectChat(id) {
 }
 
 function newChat() {
+  evals.hide();
   if (chat.messages.length > 0) {
     if (controller) controller.abort();
     chat = createChat();
@@ -229,7 +217,7 @@ function renderList() {
       chatList.appendChild(el("div", "group-label", group));
       lastGroup = group;
     }
-    const item = el("div", "chat-item" + (c === chat ? " active" : ""));
+    const item = el("div", "chat-item" + (c === chat && !evals.isOpen() ? " active" : ""));
     item.title = c.title;
     const actions = el("div", "item-actions");
     const rename = el("button");

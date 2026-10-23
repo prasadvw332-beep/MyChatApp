@@ -1,6 +1,7 @@
 [project]
 name = "backend"
 version = "0.1.0"
+description = "FastAPI + LangChain backend for the local RAG chatbot"
 requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.161.1",
@@ -14,4 +15,15 @@ dependencies = [
     "python-multipart>=0.0.32",
     "qdrant-client>=1.20.0",
     "uvicorn>=0.54.0",
+]
+
+[tool.uv]
+# ragas only uses scikit-network for synthetic test-set generation (not used here),
+# and it has no Python 3.14 Windows wheel, so skip it.
+override-dependencies = ["scikit-network; sys_platform == 'never'"]
+
+[dependency-groups]
+dev = [
+    "langchain-community>=0.4,<0.4.2",
+    "ragas>=0.4.3",
 ]
