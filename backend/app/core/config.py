@@ -14,6 +14,13 @@ EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 # a hung model server must not hold a request (and a worker) forever; generation on CPU is slow
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "300"))
 
+# Agent (app/agents/): the model must support tool calling. llama3.2:1b does, but often picks tools
+# badly; qwen2.5:7b or llama3.1:8b are much more reliable.
+AGENT_MODEL = os.getenv("AGENT_MODEL", CHAT_MODEL)
+AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "4"))  # tool rounds before it must answer
+# optional JSON file of extra MCP servers for the agent (see mcp_servers.example.json)
+MCP_SERVERS_FILE = os.getenv("MCP_SERVERS_FILE", "")
+
 # Qdrant
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6335")
 # v2: new chunk format + nomic task prefixes, so vectors aren't comparable with the old collection

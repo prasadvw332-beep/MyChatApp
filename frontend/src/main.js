@@ -6,6 +6,7 @@ import { initEvals } from "./evals.js";
 import { logout, requireLogin } from "./auth.js";
 
 const API = API_BASE + "/chat";
+const AGENT_API = API_BASE + "/agent/chat";
 const fileUrl = (docId) => `${API_BASE}/documents/${encodeURIComponent(docId)}/file`;
 const box = $("messages");
 const form = $("form");
@@ -37,6 +38,7 @@ const ICON = {
   trash: svg('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>', 14),
   file: svg('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>'),
   close: svg('<path d="M18 6 6 18M6 6l12 12"/>', 12),
+  tool: svg('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>', 13),
 };
 
 // Two-step delete: first click arms the button ("Delete"), second click confirms
@@ -100,6 +102,18 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 let chats = [];
 let chat;
 let controller = null; // set while a reply is streaming
+
+// Agent mode (a per-browser preference): replies come from /agent/chat, where the model picks tools itself
+const agentBtn = $("agent");
+let agentMode;
+function setAgentMode(on) {
+  agentMode = on;
+  agentBtn.classList.toggle("on", on);
+  agentBtn.setAttribute("aria-pressed", String(on));
+  store("agentMode", on);
+}
+setAgentMode(load("agentMode", false));
+agentBtn.addEventListener("click", () => setAgentMode(!agentMode));
 
 function createChat() {
   const c = { id: uid(), title: "New chat", messages: [], updatedAt: Date.now() };
@@ -385,6 +399,28 @@ function buildSources(sources) {
   return wrap;
 }
 
+const STEP_LABELS = {
+  search_documents: ["Searching documents", "Searched documents"],
+  list_documents: ["Listing documents", "Listed documents"],
+  read_document: ["Reading a document", "Read a document"],
+};
+
+// The agent's tool calls, shown above its answer
+function buildSteps(steps) {
+  const wrap = el("div", "steps");
+  steps.forEach((s) => {
+    const [busy, done] = STEP_LABELS[s.name] || [`Using ${s.name}`, `Used ${s.name}`];
+    const step = el("div", `step ${s.state}`);
+    step.title = s.name + " " + JSON.stringify(s.args);
+    step.innerHTML = s.state === "busy" ? '<span class="spinner"></span>' : ICON.tool;
+    step.append(s.state === "busy" ? busy + "…" : done);
+    if (s.args?.query) step.appendChild(el("span", "step-arg", `“${s.args.query}”`));
+    if (s.state === "failed") step.appendChild(el("span", "step-arg", "failed"));
+    wrap.appendChild(step);
+  });
+  return wrap;
+}
+
 function buildRow(m, i) {
   const row = el("div", `row ${m.role === "user" ? "user" : "bot"}`);
   if (m.ui) row.classList.add(m.ui); // "error" | "stopped"
@@ -395,6 +431,7 @@ function buildRow(m, i) {
   const col = el("div", "col");
   const bubble = el("div", "bubble");
   setBubble(bubble, m);
+  if (m.steps?.length) col.appendChild(buildSteps(m.steps));
   col.appendChild(bubble);
   if (m.sources?.length) col.appendChild(buildSources(m.sources));
   const actions = buildActions(m, i);
@@ -525,12 +562,25 @@ async function generate() {
     if (c !== chat) return;
     const nearBottom = distanceFromBottom() < 120;
     setBubble(bubble, reply);
+    if (reply.steps?.length) {
+      const steps = buildSteps(reply.steps);
+      const old = bubble.parentElement.querySelector(".steps");
+      old ? old.replaceWith(steps) : bubble.before(steps);
+    }
     if (nearBottom) scrollDown();
     updateToBottom();
   };
 
+  const repaint = () => {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(paint);
+    }
+  };
+
+  const agent = agentMode;
   try {
-    const res = await fetch(API, {
+    const res = await fetch(agent ? AGENT_API : API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -541,19 +591,20 @@ async function generate() {
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(await errorFrom(res));
-    try {
-      const sources = JSON.parse(res.headers.get("X-Sources") || "[]");
-      if (sources.length) reply.sources = sources;
-    } catch {}
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      reply.content += decoder.decode(value, { stream: true });
-      if (!queued) {
-        queued = true;
-        requestAnimationFrame(paint);
+    if (agent) {
+      await readAgentEvents(res, reply, repaint);
+    } else {
+      try {
+        const sources = JSON.parse(res.headers.get("X-Sources") || "[]");
+        if (sources.length) reply.sources = sources;
+      } catch {}
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        reply.content += decoder.decode(value, { stream: true });
+        repaint();
       }
     }
   } catch (err) {
@@ -578,6 +629,36 @@ async function generate() {
     input.focus();
   }
   if (!reply.ui) autoTitle(c);
+}
+
+// /agent/chat streams one JSON event per line (see backend/app/agents/loop.py)
+async function readAgentEvents(res, reply, changed) {
+  reply.steps = [];
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // an incomplete line waits for the next read
+    lines.filter((l) => l.trim()).forEach((l) => applyAgentEvent(JSON.parse(l), reply));
+    changed();
+  }
+}
+
+function applyAgentEvent(e, reply) {
+  if (e.type === "token") reply.content += e.text;
+  else if (e.type === "tool") reply.steps.push({ name: e.name, args: e.args, state: "busy" });
+  else if (e.type === "tool_done") {
+    const step = reply.steps.findLast((s) => s.name === e.name && s.state === "busy");
+    if (step) step.state = e.ok ? "done" : "failed";
+  } else if (e.type === "sources") {
+    if (e.sources.length) reply.sources = e.sources;
+  } else if (e.type === "error") {
+    reply.content += (reply.content ? "\n\n" : "") + `[${e.detail}]`;
+  }
 }
 
 // Ask the model for a short chat title: as soon as there is a real question,

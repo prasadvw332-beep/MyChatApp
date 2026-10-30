@@ -39,16 +39,22 @@ backend/                    Python API + ingestion workers (one Docker image)
         health.py           GET /health (liveness), GET /health/ready (dependency checks)
         auth.py             /auth/register, /auth/login, /auth/me, /auth/logout
         chat.py             POST /chat (retrieve -> answer, streamed), POST /title
+        agent.py            POST /agent/chat (the model picks tools; streams NDJSON events)
         chats.py            chat history
         documents.py        GET/DELETE /documents, POST /upload, GET /documents/{id}/file
         ingest.py           batch ingestion: POST/GET /ingest/batches, /ingest/retry-failed
         evals.py            RAGAS runs
     prompts/                prompt templates, one file per feature
-      rag.py, title.py
+      rag.py, title.py, agents.py
     rag/                    the RAG technique: knowledge base + answering from it
       chunking.py           text extraction and section-aware chunking
       knowledge_base.py     index / retrieve / delete documents (through VectorStore)
       answer.py             retrieved chunks + chat history -> model messages
+    agents/                 the tool-using agent (agent mode)
+      loop.py               model -> tool calls -> results -> ... -> answer, as events
+      tools.py              its tools, all over MCP: the knowledge-base server + MCP_SERVERS_FILE
+    mcp_server/             the knowledge base as an MCP server (search, list, read documents)
+      knowledge_base.py     the tools; python -m app.mcp_server runs it over stdio
     ingestion/              batch pipeline for thousands of documents
       queue.py              queue in PostgreSQL: batches, claiming, retries, progress
       worker.py             python -m app.ingestion.worker  (run 3)
@@ -82,7 +88,7 @@ deploy/                     how to run it (see deploy/README.md)
 | a new table | `models/<area>.py`, export it in `models/__init__.py`, then an Alembic migration |
 | a new setting | `core/config.py` (+ `.env.example`, `deploy/k8s/configmap.yaml`) |
 | a new prompt | `prompts/<feature>.py` |
-| an agent layer | `app/agents/` (next to `rag/`): agent loop, `tools/` (e.g. a tool calling `knowledge_base.retrieve`), prompts in `prompts/agents.py` |
+| a new agent tool | a tool on an MCP server: ours in `mcp_server/`, or an external server in `MCP_SERVERS_FILE` |
 | a new external system (Redis, S3, an API) | a client in `services/` |
 | a background job | `ingestion/` style: its own package with a worker entry point |
 
@@ -176,6 +182,38 @@ The same is available over HTTP: `POST /ingest/batches` (multi-file upload), `GE
 
 The throughput limit is embedding, not the number of workers: all workers share one Ollama. `OLLAMA_NUM_PARALLEL=3` lets it serve them at the same time. Beyond that, more speed needs more Ollama replicas or a GPU.
 
+## Agent mode (MCP)
+
+The **Agent** button in the composer switches replies from `/chat` (always retrieve, then answer) to
+`/agent/chat`, where the model decides which tools to use: it can skip the documents for a greeting,
+search again with other words, or list and read a whole document to summarize it. Each tool call
+shows up above the answer.
+
+All tools come from MCP servers (`app/agents/tools.py`):
+
+- **our knowledge-base server** (`app/mcp_server/`): `search_documents`, `list_documents`, `read_document`.
+  It is read-only; uploading and deleting stay behind the logged-in API. The agent connects to it in-process.
+- **external servers**, optional: point `MCP_SERVERS_FILE` at a JSON file like
+  [`backend/mcp_servers.example.json`](backend/mcp_servers.example.json) (web fetch). Servers that fail to start are skipped.
+
+The model must support tool calling. `llama3.2:1b` works but often picks tools badly or writes a tool
+call as text; pull a bigger one and set `AGENT_MODEL`, e.g. `ollama pull qwen2.5:7b`.
+
+The same knowledge-base server works in other MCP clients. For Claude Desktop or Claude Code, run it over stdio:
+
+```json
+{
+  "mcpServers": {
+    "my-chatbot-kb": {
+      "command": "uv",
+      "args": ["run", "--directory", "D:/path/to/backend", "--env-file", ".env", "python", "-m", "app.mcp_server"]
+    }
+  }
+}
+```
+
+It reads Qdrant, PostgreSQL and MinIO directly, so it bypasses the login: use it only on your own machine.
+
 ## Evaluation (RAGAS)
 
 [RAGAS](https://docs.ragas.io) scores the pipeline on a set of questions with reference answers in `backend/evals/dataset.jsonl`. Each question is answered with the same retrieval and prompt code as `/chat`, then a local judge model scores:
@@ -222,6 +260,9 @@ The backend reads these environment variables (defaults shown). To use a file, c
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | `minioadmin` / `minioadmin123` |
 | `MINIO_BUCKET` | `documents` |
 | `CORS_ORIGINS` | `*` (comma-separated list) |
+| `AGENT_MODEL` | same as `CHAT_MODEL` (needs tool calling, see Agent mode) |
+| `AGENT_MAX_STEPS` | `4` (tool rounds before the agent must answer) |
+| `MCP_SERVERS_FILE` | empty (JSON file of extra MCP servers for the agent) |
 | `EVAL_MODEL` | same as `CHAT_MODEL` (RAGAS judge) |
 | `EVAL_EMBED_MODEL` | same as `EMBED_MODEL` |
 

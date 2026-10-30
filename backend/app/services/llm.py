@@ -4,7 +4,7 @@ import httpx
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
-from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
+from app.core.config import AGENT_MODEL, CHAT_MODEL, EMBED_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
 
 
 class PrefixedEmbeddings(Embeddings):
@@ -45,6 +45,8 @@ llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0.2, client_
 # short, deterministic output for chat titles; the cap stops a runaway answer from blocking Ollama
 title_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=20,
                        client_kwargs=_TIMEOUT)
+# deterministic, so it picks tools consistently
+agent_llm = ChatOllama(model=AGENT_MODEL, base_url=OLLAMA_URL, temperature=0, client_kwargs=_TIMEOUT)
 
 
 def ping() -> None:
