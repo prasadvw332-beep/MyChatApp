@@ -43,7 +43,7 @@ backend/                    Python API + ingestion workers (one Docker image)
       rag.py, title.py
     rag/                    the RAG technique: knowledge base + answering from it
       chunking.py           text extraction and section-aware chunking
-      knowledge_base.py     index / retrieve / delete documents in Qdrant
+      knowledge_base.py     index / retrieve / delete documents (through VectorStore)
       answer.py             retrieved chunks + chat history -> model messages
     ingestion/              batch pipeline for thousands of documents
       queue.py              queue in PostgreSQL: batches, claiming, retries, progress
@@ -52,6 +52,7 @@ backend/                    Python API + ingestion workers (one Docker image)
     services/               shared building blocks (used by rag, ingestion, future agents)
       llm.py                Ollama chat models and embeddings
       storage.py            original files in MinIO
+      vector_store.py       chunk vectors: VectorStore interface + Qdrant implementation
       doc_store.py          document metadata in PostgreSQL
   migrations/               Alembic database migrations
   evals/                    RAGAS evaluation dataset and runner

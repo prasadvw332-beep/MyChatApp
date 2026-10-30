@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.db import SessionLocal
-from app.models import Document
+from app.models import DocStatus, Document
 
 
 def sha256(data: bytes) -> str:
@@ -17,35 +17,43 @@ def sha256(data: bytes) -> str:
 
 def find_duplicate(digest: str) -> Document | None:
     with SessionLocal() as db:
-        return db.scalars(select(Document).where(Document.sha256 == digest, Document.status == "ready")).first()
+        return db.scalars(select(Document).where(Document.sha256 == digest, Document.status == DocStatus.READY)).first()
 
 
 class Duplicate(Exception):
     """A document with the same content hash already exists."""
 
 
-def create(doc_id: str, filename: str, data: bytes, digest: str) -> None:
+def create(
+    doc_id: str, filename: str, data: bytes, digest: str,
+    status: DocStatus = DocStatus.INDEXING, batch_id: int | None = None,
+) -> None:
+    """Add the row for a new document (direct upload, or queued with a batch_id). Raises Duplicate."""
     try:
         with SessionLocal.begin() as db:
             db.add(Document(
-                doc_id=doc_id, filename=filename, ext=os.path.splitext(filename)[1].lower().lstrip("."),
+                doc_id=doc_id, filename=filename, ext=_ext(filename),
                 size_bytes=len(data), sha256=digest, minio_key=f"{doc_id}/{filename}",
-                status="indexing", uploaded_at=datetime.now(timezone.utc),
+                status=status, uploaded_at=datetime.now(timezone.utc), batch_id=batch_id,
             ))
     except IntegrityError:
         raise Duplicate() from None
 
 
+def _ext(filename: str) -> str:
+    return os.path.splitext(filename)[1].lower().lstrip(".")
+
+
 def stale_indexing() -> list[str]:
     """Uploads left 'indexing' by a crash; at startup nothing is legitimately in progress."""
     with SessionLocal() as db:
-        return list(db.scalars(select(Document.doc_id).where(Document.status == "indexing")))
+        return list(db.scalars(select(Document.doc_id).where(Document.status == DocStatus.INDEXING)))
 
 
 def mark_ready(doc_id: str, chunks: int) -> None:
     with SessionLocal.begin() as db:
         doc = db.get(Document, doc_id)
-        doc.chunks, doc.status = chunks, "ready"
+        doc.chunks, doc.status = chunks, DocStatus.READY
 
 
 def delete(doc_id: str) -> None:
@@ -95,24 +103,16 @@ def backfill(qdrant_docs: list[dict], storage) -> int:
         try:
             key = storage.find(d["doc_id"])
             if key:
-                obj = storage.open_file(key)
-                try:
-                    data = obj.read()
-                    modified = obj.headers.get("Last-Modified")
-                finally:
-                    obj.close()
-                    obj.release_conn()
-                size, digest = len(data), sha256(data)
-                if modified:
-                    uploaded = datetime.strptime(modified, "%a, %d %b %Y %H:%M:%S %Z").replace(tzinfo=timezone.utc)
+                data, modified = storage.read(key)
+                size, digest, uploaded = len(data), sha256(data), modified or uploaded
         except Exception:
             pass  # metadata is best-effort for old documents
         with SessionLocal.begin() as db:
             db.add(Document(
                 doc_id=d["doc_id"], filename=d["filename"],
-                ext=os.path.splitext(d["filename"])[1].lower().lstrip("."),
+                ext=_ext(d["filename"]),
                 size_bytes=size, sha256=digest, chunks=d["chunks"], minio_key=key,
-                status="ready", uploaded_at=uploaded,
+                status=DocStatus.READY, uploaded_at=uploaded,
             ))
         added += 1
     return added

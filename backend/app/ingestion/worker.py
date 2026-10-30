@@ -33,22 +33,13 @@ def _stop(signum, _frame) -> None:
     log.info("got %s, stopping after the current document", signal.Signals(signum).name)
 
 
-def _download(minio_key: str) -> bytes:
-    obj = storage.open_file(minio_key)
-    try:
-        return obj.read()
-    finally:
-        obj.close()
-        obj.release_conn()
-
-
 def process(doc) -> None:
     if doc.attempts > INGEST_MAX_ATTEMPTS:  # its earlier workers died or ran past the lease
         queue.fail(doc, doc.error or "Gave up: processing never completed.", retry=False)
         return
     started = time.monotonic()
     try:
-        chunks = knowledge_base.index(doc.doc_id, doc.filename, _download(doc.minio_key))
+        chunks = knowledge_base.index(doc.doc_id, doc.filename, storage.read(doc.minio_key)[0])
     except ValueError as e:  # no readable text: retrying won't change that
         log.warning("failed %s: %s", doc.filename, e)
         queue.fail(doc, str(e), retry=False)

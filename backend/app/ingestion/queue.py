@@ -14,19 +14,18 @@ wait on each other's locks. A worker that dies mid-document leaves its row `proc
 INGEST_LEASE_SECONDS another worker takes it over, up to INGEST_MAX_ATTEMPTS in total.
 """
 
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, exists, func, or_, select, update
-from sqlalchemy.exc import IntegrityError
 
 from app.core.config import INGEST_LEASE_SECONDS, INGEST_MAX_ATTEMPTS
 from app.core.db import SessionLocal
-from app.models import Document, IngestBatch
+from app.models import BatchStatus, DocStatus, Document, IngestBatch
 from app.services import doc_store, storage
 
-PENDING = ("queued", "processing")
+PENDING = (DocStatus.QUEUED, DocStatus.PROCESSING)
+BATCH_STATES = (*PENDING, DocStatus.READY, DocStatus.FAILED)  # every status a batch document can have
 
 
 def _now() -> datetime:
@@ -37,7 +36,7 @@ def _now() -> datetime:
 
 def create_batch(source: str) -> int:
     with SessionLocal.begin() as db:
-        batch = IngestBatch(source=source, status="filling", created_at=_now())
+        batch = IngestBatch(source=source, status=BatchStatus.FILLING, created_at=_now())
         db.add(batch)
         db.flush()
         return batch.id
@@ -50,13 +49,8 @@ def add(batch_id: int, filename: str, data: bytes) -> str | None:
     # file first, row second: a worker can claim the row as soon as it exists
     storage.save(doc_id, filename, data)
     try:
-        with SessionLocal.begin() as db:
-            db.add(Document(
-                doc_id=doc_id, filename=filename, ext=os.path.splitext(filename)[1].lower().lstrip("."),
-                size_bytes=len(data), sha256=digest, minio_key=f"{doc_id}/{filename}",
-                status="queued", uploaded_at=_now(), batch_id=batch_id,
-            ))
-    except IntegrityError:  # same content already queued or indexed (unique sha256)
+        doc_store.create(doc_id, filename, data, digest, status=DocStatus.QUEUED, batch_id=batch_id)
+    except doc_store.Duplicate:  # same content already queued or indexed (unique sha256)
         storage.delete(doc_id)
         return None
     return doc_id
@@ -65,7 +59,7 @@ def add(batch_id: int, filename: str, data: bytes) -> str | None:
 def seal(batch_id: int) -> None:
     """The producer is done adding: the batch may now be marked done when its documents are."""
     with SessionLocal.begin() as db:
-        db.execute(update(IngestBatch).where(IngestBatch.id == batch_id).values(status="open"))
+        db.execute(update(IngestBatch).where(IngestBatch.id == batch_id).values(status=BatchStatus.OPEN))
     _close_if_done(batch_id)
 
 
@@ -75,7 +69,7 @@ def claim(worker: str) -> Document | None:
     """Take the next document of the current batch, or None if there's nothing to do right now."""
     with SessionLocal.begin() as db:
         batch_id = db.scalar(
-            select(IngestBatch.id).where(IngestBatch.status != "done").order_by(IngestBatch.id).limit(1)
+            select(IngestBatch.id).where(IngestBatch.status != BatchStatus.DONE).order_by(IngestBatch.id).limit(1)
         )
         if batch_id is None:
             return None
@@ -84,15 +78,15 @@ def claim(worker: str) -> Document | None:
             select(Document)
             .where(
                 Document.batch_id == batch_id,
-                or_(Document.status == "queued",
-                    and_(Document.status == "processing", Document.claimed_at < expired)),
+                or_(Document.status == DocStatus.QUEUED,
+                    and_(Document.status == DocStatus.PROCESSING, Document.claimed_at < expired)),
             )
             .order_by(Document.attempts, Document.uploaded_at)  # retries go after fresh documents
             .limit(1)
             .with_for_update(skip_locked=True)
         ).first()
         if doc:
-            doc.status, doc.worker, doc.claimed_at = "processing", worker, _now()
+            doc.status, doc.worker, doc.claimed_at = DocStatus.PROCESSING, worker, _now()
             doc.attempts += 1
             return doc
     # nothing claimable: either the batch is still filling, others are busy with its last
@@ -107,14 +101,14 @@ def finish(doc: Document, chunks: int) -> bool:
         row = db.get(Document, doc.doc_id)
         if row is None:
             return False
-        row.status, row.chunks, row.error, row.claimed_at = "ready", chunks, None, None
+        row.status, row.chunks, row.error, row.claimed_at = DocStatus.READY, chunks, None, None
     _close_if_done(doc.batch_id)
     return True
 
 
 def fail(doc: Document, error: str, retry: bool = True) -> str:
     """Record a failure: back to the queue while attempts remain, else `failed`. Returns the new status."""
-    status = "queued" if retry and doc.attempts < INGEST_MAX_ATTEMPTS else "failed"
+    status = DocStatus.QUEUED if retry and doc.attempts < INGEST_MAX_ATTEMPTS else DocStatus.FAILED
     with SessionLocal.begin() as db:
         row = db.get(Document, doc.doc_id)
         if row is None:
@@ -134,10 +128,10 @@ def _close_if_done(batch_id: int | None) -> None:
             update(IngestBatch)
             .where(
                 IngestBatch.id == batch_id,
-                IngestBatch.status == "open",
+                IngestBatch.status == BatchStatus.OPEN,
                 ~exists().where(Document.batch_id == batch_id, Document.status.in_(PENDING)),
             )
-            .values(status="done", finished_at=_now())
+            .values(status=BatchStatus.DONE, finished_at=_now())
         )
 
 
@@ -158,20 +152,20 @@ def progress(limit: int = 50) -> dict:
             select(Document.status, func.count()).where(Document.batch_id.is_not(None)).group_by(Document.status)
         ).all())
         workers = list(db.scalars(
-            select(Document.worker).where(Document.status == "processing").distinct()
+            select(Document.worker).where(Document.status == DocStatus.PROCESSING).distinct()
         ))
 
     def row(b: IngestBatch) -> dict:
         c = counts.get(b.id, {})
         return {
             "id": b.id, "source": b.source, "status": b.status,
-            "total": sum(c.values()), **{s: c.get(s, 0) for s in ("queued", "processing", "ready", "failed")},
+            "total": sum(c.values()), **{s: c.get(s, 0) for s in BATCH_STATES},
             "created_at": b.created_at.isoformat(timespec="seconds"),
             "finished_at": b.finished_at.isoformat(timespec="seconds") if b.finished_at else None,
         }
 
     return {
-        "totals": {s: totals.get(s, 0) for s in ("queued", "processing", "ready", "failed")},
+        "totals": {s: totals.get(s, 0) for s in BATCH_STATES},
         "active_workers": workers,
         "batches": [row(b) for b in batches],
     }
@@ -180,7 +174,7 @@ def progress(limit: int = 50) -> dict:
 def failures(batch_id: int) -> list[dict]:
     with SessionLocal() as db:
         docs = db.scalars(
-            select(Document).where(Document.batch_id == batch_id, Document.status == "failed")
+            select(Document).where(Document.batch_id == batch_id, Document.status == DocStatus.FAILED)
             .order_by(Document.filename)
         )
         return [{"doc_id": d.doc_id, "filename": d.filename, "attempts": d.attempts, "error": d.error}
@@ -190,12 +184,12 @@ def failures(batch_id: int) -> list[dict]:
 def retry_failed() -> int:
     """Queue every failed document again (with fresh attempts) and reopen their batches."""
     with SessionLocal.begin() as db:
-        batch_ids = select(Document.batch_id).where(Document.status == "failed", Document.batch_id.is_not(None))
-        db.execute(update(IngestBatch).where(IngestBatch.id.in_(batch_ids), IngestBatch.status == "done")
-                   .values(status="open", finished_at=None))
+        batch_ids = select(Document.batch_id).where(Document.status == DocStatus.FAILED, Document.batch_id.is_not(None))
+        db.execute(update(IngestBatch).where(IngestBatch.id.in_(batch_ids), IngestBatch.status == BatchStatus.DONE)
+                   .values(status=BatchStatus.OPEN, finished_at=None))
         result = db.execute(
-            update(Document).where(Document.status == "failed", Document.batch_id.is_not(None))
-            .values(status="queued", attempts=0)
+            update(Document).where(Document.status == DocStatus.FAILED, Document.batch_id.is_not(None))
+            .values(status=DocStatus.QUEUED, attempts=0)
         )
         return result.rowcount
 
@@ -205,5 +199,5 @@ def older_versions(doc: Document) -> list[str]:
     with SessionLocal() as db:
         return list(db.scalars(select(Document.doc_id).where(
             Document.filename == doc.filename, Document.doc_id != doc.doc_id,
-            Document.status == "ready", Document.uploaded_at < doc.uploaded_at,
+            Document.status == DocStatus.READY, Document.uploaded_at < doc.uploaded_at,
         )))

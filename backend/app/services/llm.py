@@ -21,12 +21,21 @@ class PrefixedEmbeddings(Embeddings):
         return self.inner.embed_query(self.query_prefix + text)
 
 
-_base_embeddings = OllamaEmbeddings(model=EMBED_MODEL, base_url=OLLAMA_URL)
-embeddings: Embeddings = (
-    PrefixedEmbeddings(_base_embeddings, "search_document: ", "search_query: ")
-    if "nomic" in EMBED_MODEL
-    else _base_embeddings
-)
+# (document prefix, query prefix) per embedding model family; a new model is one more line here
+EMBED_PREFIXES = {
+    "nomic": ("search_document: ", "search_query: "),
+}
+
+
+def _embeddings(model: str) -> Embeddings:
+    base = OllamaEmbeddings(model=model, base_url=OLLAMA_URL)
+    for family, (doc_prefix, query_prefix) in EMBED_PREFIXES.items():
+        if family in model:
+            return PrefixedEmbeddings(base, doc_prefix, query_prefix)
+    return base
+
+
+embeddings = _embeddings(EMBED_MODEL)
 llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0.2)
 # short, deterministic output for chat titles; the cap stops a runaway answer from blocking Ollama
 title_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=20)

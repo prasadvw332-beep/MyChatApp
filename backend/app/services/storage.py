@@ -5,6 +5,8 @@ Objects are stored as `<doc_id>/<filename>`, so every document version has its o
 
 import io
 import os
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 
 from minio import Minio
 
@@ -54,6 +56,17 @@ def find(doc_id: str) -> str | None:
 def open_file(object_name: str):
     """Return a streaming response from MinIO; caller must close() and release_conn()."""
     return client.get_object(MINIO_BUCKET, object_name)
+
+
+def read(object_name: str) -> tuple[bytes, datetime | None]:
+    """The whole file and when it was stored."""
+    obj = open_file(object_name)
+    try:
+        modified = obj.headers.get("Last-Modified")
+        return obj.read(), parsedate_to_datetime(modified) if modified else None
+    finally:
+        obj.close()
+        obj.release_conn()
 
 
 def delete(doc_id: str) -> None:
