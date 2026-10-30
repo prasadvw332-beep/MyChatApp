@@ -1,15 +1,13 @@
 import re
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import CurrentUser
 from app.core import security
-from app.core.db import SessionLocal
+from app.core.errors import Conflict, InvalidInput
 from app.models import User
+from app.services import user_store
 
 router = APIRouter(prefix="/auth")
 
@@ -34,16 +32,13 @@ def _login(response: Response, user: User) -> dict:
 def register(body: Credentials, response: Response):
     username = body.username.strip().lower()
     if not USERNAME.fullmatch(username):
-        raise HTTPException(422, "Username must be 3-32 characters: letters, numbers, . _ -")
+        raise InvalidInput("Username must be 3-32 characters: letters, numbers, . _ -")
     if not 8 <= len(body.password) <= 128:
-        raise HTTPException(422, "Password must be 8-128 characters.")
-    user = User(username=username, password_hash=security.hash_password(body.password),
-                created_at=datetime.now(timezone.utc))
+        raise InvalidInput("Password must be 8-128 characters.")
     try:
-        with SessionLocal.begin() as db:
-            db.add(user)
-    except IntegrityError:
-        raise HTTPException(409, "That username is taken.")
+        user = user_store.create(username, security.hash_password(body.password))
+    except user_store.UsernameTaken:
+        raise Conflict("That username is taken.") from None
     return _login(response, user)
 
 
@@ -53,8 +48,7 @@ def login(body: Credentials, request: Request, response: Response):
     key = f"{username}|{request.client.host if request.client else ''}"
     if security.throttled(key):
         raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
-    with SessionLocal() as db:
-        user = db.scalars(select(User).where(User.username == username)).first()
+    user = user_store.by_username(username)
     if not security.check_password(user, body.password):
         security.record_failure(key)
         raise HTTPException(401, "Wrong username or password.")

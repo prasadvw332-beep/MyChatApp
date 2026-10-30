@@ -20,6 +20,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
+from app.core.errors import InvalidInput
+
 SUPPORTED = {".pdf", ".txt", ".md"}
 MIN_CHUNK = 250  # chars; smaller trailing pieces are merged into the previous chunk
 
@@ -96,10 +98,16 @@ def _sections(text: str) -> list[tuple[str, int, str]]:
     return sections
 
 
+class UnreadableDocument(InvalidInput, ValueError):
+    """The file has no extractable text. Permanent: retrying won't help."""
+
+    code = "unreadable_document"
+
+
 def chunk(filename: str, data: bytes) -> list[Document]:
     pages = [(p, t) for p, t in _extract(filename, data) if t.strip()]
     if not pages:
-        raise ValueError("No readable text found in this file (scanned PDFs need OCR).")
+        raise UnreadableDocument("No readable text found in this file (scanned PDFs need OCR).")
 
     # one continuous text, remembering where each page starts
     full, page_starts, page_nums = "", [], []

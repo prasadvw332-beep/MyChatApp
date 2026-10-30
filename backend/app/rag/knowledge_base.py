@@ -5,9 +5,11 @@ import uuid
 from langchain_core.documents import Document
 
 from app.core.config import MIN_SCORE
+from app.core.errors import Conflict
 from app.rag.chunking import chunk
 from app.services import doc_store, storage
-from app.services.vector_store import VectorStore, store as default_store
+from app.services.vector_store import VectorStore
+from app.services.vector_store import store as default_store
 
 TOP_K = 5
 
@@ -15,8 +17,10 @@ TOP_K = 5
 store: VectorStore = default_store
 
 
-class DuplicateDocument(Exception):
+class DuplicateDocument(Conflict):
     """The same file content is already in the knowledge base."""
+
+    code = "duplicate_document"
 
 
 def ingest(filename: str, data: bytes) -> dict:

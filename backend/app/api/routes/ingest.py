@@ -6,6 +6,7 @@ import os
 from fastapi import APIRouter, HTTPException, UploadFile
 
 from app.core.config import INGEST_BATCH_SIZE, MAX_UPLOAD_MB
+from app.core.errors import DependencyUnavailable
 from app.ingestion import queue
 from app.rag.chunking import SUPPORTED
 
@@ -41,7 +42,7 @@ async def create(files: list[UploadFile]):
                 doc_id = await asyncio.to_thread(queue.add, batch_id, f.filename, data)
                 queued, skipped = queued + (doc_id is not None), skipped + (doc_id is None)
         except Exception as e:
-            raise HTTPException(503, f"Queueing failed (are MinIO and PostgreSQL running?): {e}")
+            raise DependencyUnavailable("Queueing") from e
         finally:
             await asyncio.to_thread(queue.seal, batch_id)
     return {"batches": created, "queued": queued, "skipped": skipped}

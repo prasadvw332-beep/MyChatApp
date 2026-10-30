@@ -3,10 +3,11 @@ import os
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 from app.core.config import MAX_UPLOAD_MB
+from app.core.errors import AppError, DependencyUnavailable, NotFound
 from app.rag import knowledge_base
 from app.rag.chunking import SUPPORTED
 from app.services import doc_store, storage
@@ -19,7 +20,7 @@ async def documents():
     try:
         return await asyncio.to_thread(knowledge_base.list_documents)
     except Exception as e:
-        raise HTTPException(503, f"Could not load documents (is PostgreSQL running?): {e}")
+        raise DependencyUnavailable("The document list") from e
 
 
 class TagsIn(BaseModel):
@@ -31,7 +32,7 @@ async def set_tags(doc_id: str, body: TagsIn):
     tags = list(dict.fromkeys(t.strip() for t in body.tags if t.strip()))
     doc = await asyncio.to_thread(doc_store.set_tags, doc_id, tags)
     if not doc:
-        raise HTTPException(404, "Document not found.")
+        raise NotFound("Document not found.")
     return doc
 
 
@@ -46,12 +47,10 @@ async def upload(file: UploadFile):
         raise HTTPException(413, f"File is larger than {MAX_UPLOAD_MB} MB.")
     try:
         return await asyncio.to_thread(knowledge_base.ingest, name, data)
-    except knowledge_base.DuplicateDocument as e:
-        raise HTTPException(409, str(e))
-    except ValueError as e:
-        raise HTTPException(422, str(e))
+    except AppError:
+        raise  # duplicate (409) or unreadable file (422): the global handler shapes the response
     except Exception as e:
-        raise HTTPException(503, f"Indexing failed (are Ollama, Qdrant and PostgreSQL running?): {e}")
+        raise DependencyUnavailable("Indexing") from e
 
 
 @router.delete("/documents/{doc_id}")
@@ -59,7 +58,7 @@ async def delete_document(doc_id: str):
     try:
         await asyncio.to_thread(knowledge_base.delete_document, doc_id)
     except Exception as e:
-        raise HTTPException(503, f"Could not delete (are Qdrant and PostgreSQL running?): {e}")
+        raise DependencyUnavailable("Deleting documents") from e
     return {"ok": True}
 
 
@@ -68,13 +67,11 @@ async def document_file(doc_id: str):
     """Stream the original uploaded file from MinIO (opens inline in the browser)."""
     try:
         name = await asyncio.to_thread(storage.find, doc_id)
-        if not name:
-            raise HTTPException(404, "Original file not found (it may have been uploaded before MinIO was added).")
-        obj = await asyncio.to_thread(storage.open_file, name)
-    except HTTPException:
-        raise
+        obj = await asyncio.to_thread(storage.open_file, name) if name else None
     except Exception as e:
-        raise HTTPException(503, f"Could not reach MinIO: {e}")
+        raise DependencyUnavailable("File storage") from e
+    if obj is None:
+        raise NotFound("Original file not found (it may have been uploaded before MinIO was added).")
 
     def body():
         try:

@@ -24,6 +24,9 @@ backend/                    Python API + ingestion workers (one Docker image)
       config.py             settings from environment variables
       db.py                 SQLAlchemy engine/session, runs migrations at startup
       security.py           password hashing, session tokens, login throttling
+      errors.py             AppError types + handlers: one JSON error shape, no internals leaked
+      logging.py            JSON logs in production, request id on every line
+      middleware.py         request id (X-Request-ID), access log, last-resort 500
     models/                 database tables, one file per area
       user.py, chat.py, document.py, evaluation.py
     schemas/                request/response models shared between modules
@@ -32,7 +35,7 @@ backend/                    Python API + ingestion workers (one Docker image)
       router.py             all routes in one place; which are public / need a login
       deps.py               shared dependencies (CurrentUser)
       routes/
-        health.py           GET /health (for Docker/Kubernetes probes)
+        health.py           GET /health (liveness), GET /health/ready (dependency checks)
         auth.py             /auth/register, /auth/login, /auth/me, /auth/logout
         chat.py             POST /chat (retrieve -> answer, streamed), POST /title
         chats.py            chat history
@@ -54,8 +57,11 @@ backend/                    Python API + ingestion workers (one Docker image)
       storage.py            original files in MinIO
       vector_store.py       chunk vectors: VectorStore interface + Qdrant implementation
       doc_store.py          document metadata in PostgreSQL
+      chat_store.py         chat history in PostgreSQL (scoped to the owner)
+      user_store.py         user accounts in PostgreSQL
   migrations/               Alembic database migrations
   evals/                    RAGAS evaluation dataset and runner
+  tests/                    unit + API tests with in-memory fakes (no services needed)
   Dockerfile
 frontend/                   Vite + vanilla JS (built into an nginx image)
   src/                      main.js, auth.js, evals.js, lib.js, style.css
@@ -115,6 +121,28 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Tests
+
+```bash
+cd backend
+uv run --no-dev --group test pytest     # ~3 s; Qdrant, MinIO, Ollama and PostgreSQL are faked
+uvx ruff check app tests evals migrations
+```
+
+CI runs both on every push and pull request; images are only built and deployed when they pass.
+
+## Production behaviour
+
+| Concern | How it's handled |
+|---|---|
+| Configuration | `APP_ENV=production` refuses to start with dev passwords, a short `JWT_SECRET` or `COOKIE_SECURE=false`, and turns off the dev-only localhost CORS rule |
+| Errors | Every error is `{"detail", "code", "request_id"}`. Dependency failures return 503 with a generic message; the real exception is only in the logs |
+| Tracing | Each request gets an `X-Request-ID` (or keeps the caller's). It is in the response header, the error body and every log line of that request |
+| Logs | One JSON object per line in production (for CloudWatch/Loki/ELK), readable text in development |
+| Health | `/health` = liveness (process up, never checks dependencies). `/health/ready` = readiness: 503 only if PostgreSQL is down; Qdrant/MinIO/Ollama outages report `degraded` but keep the pod in rotation |
+| Timeouts | Ollama (`OLLAMA_TIMEOUT`, connect 5 s), Qdrant (`QDRANT_TIMEOUT`), MinIO (connect 5 s, read 60 s, 3 retries with backoff), PostgreSQL connect 5 s |
+| Migrations | Run at startup under a PostgreSQL advisory lock, so several replicas starting together migrate exactly once |
 
 ## Batch ingestion (thousands of documents)
 
@@ -185,6 +213,9 @@ The backend reads these environment variables (defaults shown). To use a file, c
 | `QDRANT_URL` | `http://localhost:6335` |
 | `QDRANT_COLLECTION` | `documents_v2` |
 | `MIN_SCORE` | `0.58` (relevance cut-off for using documents) |
+| `APP_ENV` | `development` (`production` enables the startup checks and JSON logs) |
+| `LOG_LEVEL` | `INFO` |
+| `OLLAMA_TIMEOUT` / `QDRANT_TIMEOUT` | `300` / `30` seconds |
 | `MINIO_ENDPOINT` | `localhost:9000` |
 | `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | `minioadmin` / `minioadmin123` |
 | `MINIO_BUCKET` | `documents` |

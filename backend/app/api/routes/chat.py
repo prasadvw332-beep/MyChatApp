@@ -1,10 +1,12 @@
 import asyncio
 import json
+import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from app.core.errors import DependencyUnavailable
 from app.prompts.title import TITLE_SHOTS, TITLE_SYSTEM
 from app.rag import knowledge_base
 from app.rag.answer import build_messages, cite
@@ -12,6 +14,7 @@ from app.schemas.chat import ChatRequest
 from app.services.llm import llm, title_llm
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 @router.post("/title")
@@ -25,7 +28,7 @@ async def title(req: ChatRequest):
     try:
         out = await title_llm.ainvoke(messages)
     except Exception as e:
-        raise HTTPException(503, f"Ollama error: {e}")
+        raise DependencyUnavailable("The language model") from e
 
     # clean up quotes / "Title:" prefixes, and reject output that is an answer rather than a title
     lines = (out.content or "").strip().splitlines()
@@ -44,7 +47,7 @@ async def chat(req: ChatRequest):
     try:
         docs = await asyncio.to_thread(knowledge_base.retrieve, question)
     except Exception as e:
-        raise HTTPException(503, f"Search failed (are Ollama and Qdrant running?): {e}")
+        raise DependencyUnavailable("Document search") from e
 
     messages = build_messages(req.messages, docs)
     sources = cite(docs)
@@ -53,8 +56,10 @@ async def chat(req: ChatRequest):
         try:
             async for chunk in llm.astream(messages):
                 yield chunk.content
-        except Exception as e:
-            yield f"\n\n[Error talking to Ollama: {e}]"
+        except Exception:
+            # the headers are already sent, so the error can only go into the text itself
+            log.exception("chat stream failed")
+            yield "\n\n[The language model stopped responding. Please try again.]"
 
     return StreamingResponse(
         token_stream(),

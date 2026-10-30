@@ -32,3 +32,19 @@ dev = [
     "langchain-community>=0.4,<0.4.2",
     "ragas>=0.4.3",
 ]
+test = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 120
+target-version = "py314"
+
+[tool.ruff.lint]
+# pyflakes + syntax errors + import order + common bug patterns (bugbear)
+select = ["E4", "E7", "E9", "F", "I", "B"]
+ignore = ["B008"]  # FastAPI's `user: User = CurrentUser` is the intended Depends() idiom

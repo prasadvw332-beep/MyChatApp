@@ -2,14 +2,13 @@
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser
-from app.core.db import SessionLocal
+from app.core.errors import InvalidInput, NotFound
 from app.models import Chat, Message, User
+from app.services import chat_store
 
 router = APIRouter(prefix="/chats")
 
@@ -56,43 +55,27 @@ def _out(c: Chat) -> dict:
 
 @router.get("")
 def list_chats(user: User = CurrentUser):
-    with SessionLocal() as db:
-        chats = db.scalars(
-            select(Chat).where(Chat.user_id == user.id).options(selectinload(Chat.messages))
-            .order_by(Chat.updated_at.desc())
-        ).all()
-        return [_out(c) for c in chats]
+    return [_out(c) for c in chat_store.list_for(user.id)]
 
 
 @router.put("/{chat_id}")
 def save_chat(chat_id: str, body: ChatIn, user: User = CurrentUser):
     if not chat_id or len(chat_id) > 64:
-        raise HTTPException(422, "Bad chat id.")
+        raise InvalidInput("Bad chat id.")
     updated = _dt(body.updatedAt)
-    with SessionLocal.begin() as db:
-        chat = db.get(Chat, chat_id)
-        if chat is None:
-            chat = Chat(id=chat_id, user_id=user.id)
-            db.add(chat)
-        elif chat.user_id != user.id:
-            raise HTTPException(404, "Chat not found.")
-        chat.title, chat.title_by, chat.titled_at, chat.updated_at = (
-            body.title, body.titleBy, body.titledAt, updated
-        )
-        chat.messages.clear()
-        db.flush()  # delete the old rows first, or the new ones clash on (chat_id, position)
-        chat.messages = [
-            Message(position=i, role=m.role, content=m.content, ui=m.ui, sources=m.sources,
-                    created_at=_dt(m.at) if m.at else updated)
-            for i, m in enumerate(body.messages)
-        ]
+    messages = [
+        Message(position=i, role=m.role, content=m.content, ui=m.ui, sources=m.sources,
+                created_at=_dt(m.at) if m.at else updated)
+        for i, m in enumerate(body.messages)
+    ]
+    try:
+        chat_store.save(user.id, chat_id, body.title, body.titleBy, body.titledAt, updated, messages)
+    except chat_store.NotOwner:
+        raise NotFound("Chat not found.") from None  # 404, not 403: don't confirm the id exists
     return {"ok": True}
 
 
 @router.delete("/{chat_id}")
 def delete_chat(chat_id: str, user: User = CurrentUser):
-    with SessionLocal.begin() as db:
-        chat = db.get(Chat, chat_id)
-        if chat and chat.user_id == user.id:
-            db.delete(chat)
+    chat_store.delete(user.id, chat_id)
     return {"ok": True}

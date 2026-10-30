@@ -1,9 +1,10 @@
 """Ollama model clients: chat models and embeddings."""
 
+import httpx
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
-from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
+from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
 
 
 class PrefixedEmbeddings(Embeddings):
@@ -27,8 +28,12 @@ EMBED_PREFIXES = {
 }
 
 
+# connect fails fast when Ollama is down; read allows for slow CPU generation
+_TIMEOUT = {"timeout": httpx.Timeout(OLLAMA_TIMEOUT, connect=5)}
+
+
 def _embeddings(model: str) -> Embeddings:
-    base = OllamaEmbeddings(model=model, base_url=OLLAMA_URL)
+    base = OllamaEmbeddings(model=model, base_url=OLLAMA_URL, client_kwargs=_TIMEOUT)
     for family, (doc_prefix, query_prefix) in EMBED_PREFIXES.items():
         if family in model:
             return PrefixedEmbeddings(base, doc_prefix, query_prefix)
@@ -36,6 +41,11 @@ def _embeddings(model: str) -> Embeddings:
 
 
 embeddings = _embeddings(EMBED_MODEL)
-llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0.2)
+llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0.2, client_kwargs=_TIMEOUT)
 # short, deterministic output for chat titles; the cap stops a runaway answer from blocking Ollama
-title_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=20)
+title_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=20,
+                       client_kwargs=_TIMEOUT)
+
+
+def ping() -> None:
+    httpx.get(f"{OLLAMA_URL}/api/version", timeout=3).raise_for_status()

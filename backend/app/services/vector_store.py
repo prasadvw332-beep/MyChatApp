@@ -20,7 +20,7 @@ from qdrant_client.models import (
     VectorParams,
 )
 
-from app.core.config import EMBED_BATCH_SIZE, QDRANT_COLLECTION, QDRANT_URL
+from app.core.config import EMBED_BATCH_SIZE, QDRANT_COLLECTION, QDRANT_TIMEOUT, QDRANT_URL
 from app.services.llm import embeddings
 
 
@@ -41,6 +41,10 @@ class VectorStore(Protocol):
         """One {doc_id, filename, chunks} per stored document, sorted by filename."""
         ...
 
+    def ping(self) -> None:
+        """Raise if the database can't be reached (used by the readiness check)."""
+        ...
+
 
 # langchain-qdrant keeps our metadata under this payload key
 META = "metadata"
@@ -51,10 +55,13 @@ def _filter(key: str, value: str) -> Filter:
 
 
 class QdrantStore:
-    def __init__(self, url: str, collection: str, embedder: Embeddings):
-        self.client = QdrantClient(url=url)
+    def __init__(self, url: str, collection: str, embedder: Embeddings, timeout: int = 30):
+        self.client = QdrantClient(url=url, timeout=timeout)
         self.collection = collection
         self.embedder = embedder
+
+    def ping(self) -> None:
+        self.client.get_collections()
 
     def _exists(self) -> bool:
         return self.client.collection_exists(self.collection)
@@ -127,4 +134,4 @@ class QdrantStore:
         return sorted(found.values(), key=lambda d: d["filename"].lower())
 
 
-store: VectorStore = QdrantStore(QDRANT_URL, QDRANT_COLLECTION, embeddings)
+store: VectorStore = QdrantStore(QDRANT_URL, QDRANT_COLLECTION, embeddings, QDRANT_TIMEOUT)

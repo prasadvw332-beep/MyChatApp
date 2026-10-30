@@ -65,15 +65,19 @@ spec:
 
           # Readiness: "can this pod receive traffic yet?" Until it passes, the Service
           # sends no requests here (e.g. while the app is still starting up).
+          # /health/ready checks PostgreSQL; it stays ready (status "degraded") if only
+          # Qdrant, MinIO or Ollama is down, so one outage doesn't empty the Service.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5   # the endpoint gives each check 3 seconds
 
           # Liveness: "is this pod still alive?" If it fails 3 times in a row,
           # Kubernetes restarts the container (e.g. the process hung).
+          # /health never checks dependencies: a database outage must not restart healthy pods.
           livenessProbe:
             httpGet:
               path: /health

@@ -43,11 +43,11 @@ def enqueue(folder: Path, batch_size: int, threads: int) -> None:
     queued = skipped = 0
     # uploading to MinIO is network-bound, so several threads speed it up a lot
     with ThreadPoolExecutor(threads) as pool:
-        for group in batched(files, batch_size):
+        for group in batched(files, batch_size, strict=False):  # the last batch may be smaller
             batch_id = queue.create_batch(str(folder))
             try:
                 results = list(pool.map(
-                    lambda p: queue.add(batch_id, p.relative_to(folder).as_posix(), p.read_bytes()),
+                    lambda p, batch_id=batch_id: queue.add(batch_id, p.relative_to(folder).as_posix(), p.read_bytes()),
                     group,
                 ))
             finally:

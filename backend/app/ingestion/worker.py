@@ -13,12 +13,14 @@ import signal
 import socket
 import time
 
+from app.core import config
 from app.core.config import INGEST_MAX_ATTEMPTS
+from app.core.logging import set_request_id, setup_logging
 from app.ingestion import queue
 from app.rag import knowledge_base
+from app.rag.chunking import UnreadableDocument
 from app.services import storage
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("worker")
 
 NAME = os.getenv("HOSTNAME") or socket.gethostname()  # the pod name in Kubernetes
@@ -38,9 +40,10 @@ def process(doc) -> None:
         queue.fail(doc, doc.error or "Gave up: processing never completed.", retry=False)
         return
     started = time.monotonic()
+    set_request_id(f"doc-{doc.doc_id[:12]}")  # every log line about this document carries its id
     try:
         chunks = knowledge_base.index(doc.doc_id, doc.filename, storage.read(doc.minio_key)[0])
-    except ValueError as e:  # no readable text: retrying won't change that
+    except UnreadableDocument as e:  # retrying won't change that
         log.warning("failed %s: %s", doc.filename, e)
         queue.fail(doc, str(e), retry=False)
         return
@@ -58,6 +61,8 @@ def process(doc) -> None:
 
 
 def main() -> None:
+    setup_logging()
+    config.validate()
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     log.info("worker %s started", NAME)
@@ -71,7 +76,7 @@ def main() -> None:
         except Exception as e:
             # e.g. PostgreSQL restarting. A claimed document stays 'processing' and is
             # picked up again once its lease expires.
-            log.error("worker loop error: %s", e)
+            log.exception("worker loop error: %s", e)
             time.sleep(5)
     log.info("worker %s stopped", NAME)
 
