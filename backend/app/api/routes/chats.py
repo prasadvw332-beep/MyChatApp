@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser
+from app.core.audit import audit
 from app.core.errors import InvalidInput, NotFound
 from app.models import Chat, Message, User
 from app.services import chat_store
@@ -78,4 +79,5 @@ def save_chat(chat_id: str, body: ChatIn, user: User = CurrentUser):
 @router.delete("/{chat_id}")
 def delete_chat(chat_id: str, user: User = CurrentUser):
     chat_store.delete(user.id, chat_id)
+    audit("chat.delete", chat_id=chat_id)
     return {"ok": True}

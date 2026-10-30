@@ -6,7 +6,7 @@ import time
 import uuid
 
 from app.core.errors import unhandled
-from app.core.logging import set_request_id
+from app.core.logging import set_request_id, set_user_id
 
 access_log = logging.getLogger("app.access")
 _SAFE_ID = re.compile(r"[A-Za-z0-9._-]{1,64}")  # a caller-supplied id goes into logs: keep it tame
@@ -23,7 +23,8 @@ class RequestContextMiddleware:
             return await self.app(scope, receive, send)
         incoming = dict(scope["headers"]).get(b"x-request-id", b"").decode("latin-1")
         rid = incoming if _SAFE_ID.fullmatch(incoming) else uuid.uuid4().hex
-        token = set_request_id(rid)
+        tokens = [set_request_id(rid), set_user_id(None)]  # the user id is filled in by deps.current_user
+        client_ip = (scope.get("client") or ("-",))[0]
         started = time.perf_counter()
         status, response_started = 500, False
 
@@ -45,6 +46,7 @@ class RequestContextMiddleware:
             access_log.info(
                 "%s %s %s %.1fms", scope["method"], scope["path"], status, ms,
                 extra={"fields": {"method": scope["method"], "path": scope["path"], "status": status,
-                                  "duration_ms": ms}},
+                                  "duration_ms": ms, "client_ip": client_ip}},
             )
-            token.var.reset(token)
+            for token in tokens:
+                token.var.reset(token)

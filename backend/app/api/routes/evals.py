@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.audit import audit
 from evals import run_ragas
 
 router = APIRouter(prefix="/evals")
@@ -75,5 +76,6 @@ async def start_run(req: RunRequest):
             _status.update(running=False, phase="error",
                            error=f"{type(e).__name__}: {e} (are Ollama, Qdrant and the judge model '{run_ragas.EVAL_MODEL}' available?)")
 
+    audit("eval.run_started", metrics=req.metrics, limit=req.limit)
     _task = asyncio.create_task(job())  # keep a reference so it isn't garbage-collected
     return _status

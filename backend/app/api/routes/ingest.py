@@ -5,6 +5,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, UploadFile
 
+from app.core.audit import audit
 from app.core.config import INGEST_BATCH_SIZE, MAX_UPLOAD_MB
 from app.core.errors import DependencyUnavailable
 from app.ingestion import queue
@@ -45,9 +46,12 @@ async def create(files: list[UploadFile]):
             raise DependencyUnavailable("Queueing") from e
         finally:
             await asyncio.to_thread(queue.seal, batch_id)
+    audit("ingest.batches_created", batches=created, queued=queued, skipped=skipped)
     return {"batches": created, "queued": queued, "skipped": skipped}
 
 
 @router.post("/retry-failed")
 async def retry_failed():
-    return {"queued": await asyncio.to_thread(queue.retry_failed)}
+    queued = await asyncio.to_thread(queue.retry_failed)
+    audit("ingest.retry_failed", queued=queued)
+    return {"queued": queued}

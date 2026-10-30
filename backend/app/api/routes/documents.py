@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.core.audit import audit
 from app.core.config import MAX_UPLOAD_MB
 from app.core.errors import AppError, DependencyUnavailable, NotFound
 from app.rag import knowledge_base
@@ -33,6 +34,7 @@ async def set_tags(doc_id: str, body: TagsIn):
     doc = await asyncio.to_thread(doc_store.set_tags, doc_id, tags)
     if not doc:
         raise NotFound("Document not found.")
+    audit("document.tags", doc_id=doc_id, tags=tags)
     return doc
 
 
@@ -46,11 +48,14 @@ async def upload(file: UploadFile):
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"File is larger than {MAX_UPLOAD_MB} MB.")
     try:
-        return await asyncio.to_thread(knowledge_base.ingest, name, data)
-    except AppError:
+        result = await asyncio.to_thread(knowledge_base.ingest, name, data)
+    except AppError as e:
+        audit("document.upload.rejected", filename=name, size_bytes=len(data), reason=e.code)
         raise  # duplicate (409) or unreadable file (422): the global handler shapes the response
     except Exception as e:
         raise DependencyUnavailable("Indexing") from e
+    audit("document.upload", doc_id=result["doc_id"], filename=name, size_bytes=len(data), chunks=result["chunks"])
+    return result
 
 
 @router.delete("/documents/{doc_id}")
@@ -59,6 +64,7 @@ async def delete_document(doc_id: str):
         await asyncio.to_thread(knowledge_base.delete_document, doc_id)
     except Exception as e:
         raise DependencyUnavailable("Deleting documents") from e
+    audit("document.delete", doc_id=doc_id)
     return {"ok": True}
 
 

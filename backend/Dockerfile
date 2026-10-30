@@ -47,4 +47,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=20s \
 
 # 9. The command the container runs. Listen on 0.0.0.0, not localhost,
 #    otherwise nothing outside the container can reach it.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# --proxy-headers: take the client IP from nginx's X-Forwarded-For, otherwise every request (and
+# the login throttle and audit log) would show nginx's IP. Trusting any sender ("*") is safe only
+# because the backend is unreachable except through nginx (no host port in compose, ClusterIP in k8s).
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

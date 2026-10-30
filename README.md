@@ -27,6 +27,7 @@ backend/                    Python API + ingestion workers (one Docker image)
       errors.py             AppError types + handlers: one JSON error shape, no internals leaked
       logging.py            JSON logs in production, request id on every line
       middleware.py         request id (X-Request-ID), access log, last-resort 500
+      audit.py              audit events: who did what (login, upload, delete, ...)
     models/                 database tables, one file per area
       user.py, chat.py, document.py, evaluation.py
     schemas/                request/response models shared between modules
@@ -140,6 +141,7 @@ CI runs both on every push and pull request; images are only built and deployed 
 | Errors | Every error is `{"detail", "code", "request_id"}`. Dependency failures return 503 with a generic message; the real exception is only in the logs |
 | Tracing | Each request gets an `X-Request-ID` (or keeps the caller's). It is in the response header, the error body and every log line of that request |
 | Logs | One JSON object per line in production (for CloudWatch/Loki/ELK), readable text in development |
+| Audit | `app.audit` logger: one event per security-relevant action (`auth.login.failure`, `document.delete`, ...) with user id, request id and client IP; see `app/core/audit.py`. Fields named like secrets are redacted |
 | Health | `/health` = liveness (process up, never checks dependencies). `/health/ready` = readiness: 503 only if PostgreSQL is down; Qdrant/MinIO/Ollama outages report `degraded` but keep the pod in rotation |
 | Timeouts | Ollama (`OLLAMA_TIMEOUT`, connect 5 s), Qdrant (`QDRANT_TIMEOUT`), MinIO (connect 5 s, read 60 s, 3 retries with backoff), PostgreSQL connect 5 s |
 | Migrations | Run at startup under a PostgreSQL advisory lock, so several replicas starting together migrate exactly once |

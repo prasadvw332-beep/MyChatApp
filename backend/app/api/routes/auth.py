@@ -5,7 +5,9 @@ from pydantic import BaseModel
 
 from app.api.deps import CurrentUser
 from app.core import security
+from app.core.audit import audit
 from app.core.errors import Conflict, InvalidInput
+from app.core.logging import set_user_id
 from app.models import User
 from app.services import user_store
 
@@ -39,25 +41,35 @@ def register(body: Credentials, response: Response):
         user = user_store.create(username, security.hash_password(body.password))
     except user_store.UsernameTaken:
         raise Conflict("That username is taken.") from None
+    set_user_id(user.id)
+    audit("auth.register", username=username)
     return _login(response, user)
 
 
 @router.post("/login")
 def login(body: Credentials, request: Request, response: Response):
     username = body.username.strip().lower()
-    key = f"{username}|{request.client.host if request.client else ''}"
+    ip = request.client.host if request.client else "-"
+    key = f"{username}|{ip}"
     if security.throttled(key):
+        audit("auth.login.throttled", username=username, ip=ip)
         raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
     user = user_store.by_username(username)
     if not security.check_password(user, body.password):
         security.record_failure(key)
+        # the reason stays in the log only: the client gets the same message either way
+        audit("auth.login.failure", username=username, ip=ip, reason="no_such_user" if user is None else "bad_password")
         raise HTTPException(401, "Wrong username or password.")
     security.clear_failures(key)
+    set_user_id(user.id)
+    audit("auth.login.success", username=username, ip=ip)
     return _login(response, user)
 
 
 @router.post("/logout")
-def logout(response: Response):
+def logout(request: Request, response: Response):
+    set_user_id(security.user_id_from_token(request.cookies.get(security.COOKIE)))
+    audit("auth.logout")
     response.delete_cookie(security.COOKIE, path="/")
     return {"ok": True}
 
