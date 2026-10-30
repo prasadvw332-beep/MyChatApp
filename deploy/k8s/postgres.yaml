@@ -1,0 +1,78 @@
+# PostgreSQL: chat history, users, document metadata, eval results.
+#
+# Databases are STATEFUL, so we use a StatefulSet instead of a Deployment:
+#   - pods get stable names (postgres-0, postgres-1, ...) instead of random ones
+#   - each pod gets its OWN disk (volumeClaimTemplates) that follows it on restart
+# One file can hold several objects separated by "---".
+#
+# On AWS you would usually NOT run Postgres yourself: use Amazon RDS and put its
+# address in DATABASE_URL (secret.yaml). Then this file is not needed at all.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: mychatapp
+spec:
+  serviceName: postgres
+  replicas: 1                 # a plain Postgres can't just be scaled to 2 (needs replication setup)
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_DB
+              value: mychatapp
+            # Take a single value out of the Secret
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: POSTGRES_PASSWORD
+            # A fresh volume contains a "lost+found" folder; Postgres wants an empty dir
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+  # One PersistentVolumeClaim per pod, created automatically: data-postgres-0
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]   # mounted by one node at a time
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres            # DATABASE_URL uses host "postgres"
+  namespace: mychatapp
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

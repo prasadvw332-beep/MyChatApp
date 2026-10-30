@@ -1,0 +1,49 @@
+# Ingestion workers: 3 pods that pull queued documents from PostgreSQL and index them
+# (download from MinIO -> chunk -> embed with Ollama -> store in Qdrant).
+#
+# Same image as the backend, different command. Notice what is NOT here:
+#   - no Service: workers receive no traffic, they PULL work from the queue
+#   - no ports, no readiness probe: nothing connects to them
+#
+# Scale up or down at any time; the queue makes sure no document is processed twice:
+#   kubectl scale deploy/worker --replicas=5 -n mychatapp
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: mychatapp
+  labels:
+    app: worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      # On scale-down or a new rollout, Kubernetes sends SIGTERM and waits this long before
+      # SIGKILL. The worker uses that time to finish the document it is working on.
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: worker
+          image: mychatapp-backend:1.0
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.ingestion.worker"]
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+          env:
+            - name: EMBED_BATCH_SIZE
+              value: "64"
+          resources:
+            requests:
+              cpu: 250m          # PDF text extraction and chunking run here
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi        # one document (max 20 MB) at a time

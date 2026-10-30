@@ -5,10 +5,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.prompts import TITLE_SHOTS, TITLE_SYSTEM
-from app.schemas import ChatRequest
-from app.services import rag
-from app.services.answer import build_messages, cite
+from app.prompts.title import TITLE_SHOTS, TITLE_SYSTEM
+from app.rag import knowledge_base
+from app.rag.answer import build_messages, cite
+from app.schemas.chat import ChatRequest
 from app.services.llm import llm, title_llm
 
 router = APIRouter()
@@ -42,7 +42,7 @@ async def title(req: ChatRequest):
 async def chat(req: ChatRequest):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
     try:
-        docs = await asyncio.to_thread(rag.retrieve, question)
+        docs = await asyncio.to_thread(knowledge_base.retrieve, question)
     except Exception as e:
         raise HTTPException(503, f"Search failed (are Ollama and Qdrant running?): {e}")
 

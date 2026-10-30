@@ -9,7 +9,18 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
-<div id="layout">
+<div id="auth" hidden>
+  <form id="auth-form" class="auth-card">
+    <div class="hero-mark">✦</div>
+    <h1 id="auth-title">Log in</h1>
+    <label>Username<input id="auth-username" autocomplete="username" required minlength="3" maxlength="32" spellcheck="false" autocapitalize="none"></label>
+    <label>Password<input id="auth-password" type="password" autocomplete="current-password" required minlength="1" maxlength="128"></label>
+    <p id="auth-error" class="auth-error" role="alert"></p>
+    <button id="auth-submit" class="btn primary" type="submit">Log in</button>
+    <p class="auth-foot"><span id="auth-switch-text">No account?</span> <button id="auth-switch" class="link" type="button">Sign up</button></p>
+  </form>
+</div>
+<div id="layout" hidden>
   <aside id="sidebar" aria-label="Sidebar">
     <div class="side-head">
       <div class="brand"><span class="mark">✦</span><span>My Chatbot</span></div>
@@ -48,6 +59,11 @@
       </div>
       <div id="doclist" class="docs-body"></div>
     </section>
+
+    <div class="side-user">
+      <span id="whoami" class="who"></span>
+      <button id="logout" class="link" type="button">Log out</button>
+    </div>
   </aside>
   <div id="backdrop"></div>
 

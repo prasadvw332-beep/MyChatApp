@@ -10,12 +10,13 @@ from qdrant_client.models import (
     FieldCondition,
     Filter,
     MatchValue,
+    PayloadSchemaType,
     VectorParams,
 )
 
-from app.config import MIN_SCORE, QDRANT_COLLECTION as COLLECTION, QDRANT_URL
+from app.core.config import EMBED_BATCH_SIZE, MIN_SCORE, QDRANT_COLLECTION as COLLECTION, QDRANT_URL
+from app.rag.chunking import chunk
 from app.services import doc_store, storage
-from app.services.chunking import chunk
 from app.services.llm import embeddings
 
 TOP_K = 5
@@ -29,10 +30,16 @@ META = "metadata"
 def _ensure_collection() -> None:
     if not client.collection_exists(COLLECTION):
         size = len(embeddings.embed_query("dimension probe"))
-        client.create_collection(
-            COLLECTION,
-            vectors_config=VectorParams(size=size, distance=Distance.COSINE),
-        )
+        try:
+            client.create_collection(
+                COLLECTION,
+                vectors_config=VectorParams(size=size, distance=Distance.COSINE),
+            )
+        except Exception:
+            if not client.collection_exists(COLLECTION):  # else another worker created it first
+                raise
+    # deleting/re-indexing one document filters on doc_id; without an index that scans every chunk
+    client.create_payload_index(COLLECTION, f"{META}.doc_id", field_schema=PayloadSchemaType.KEYWORD)
 
 
 def _store() -> QdrantVectorStore:
@@ -61,7 +68,10 @@ def ingest(filename: str, data: bytes) -> dict:
 
     _ensure_collection()
     old_ids = _doc_ids_for(filename) | doc_store.ids_for_filename(filename)
-    doc_store.create(doc_id, filename, data, digest)
+    try:
+        doc_store.create(doc_id, filename, data, digest)
+    except doc_store.Duplicate:
+        raise DuplicateDocument("This file is already in the knowledge base.") from None
     try:
         storage.save(doc_id, filename, data)
         _store().add_documents(docs)
@@ -74,6 +84,23 @@ def ingest(filename: str, data: bytes) -> dict:
     for old in old_ids - {doc_id}:
         delete_document(old)
     return {"doc_id": doc_id, "filename": filename, "chunks": len(docs)}
+
+
+def index(doc_id: str, filename: str, data: bytes) -> int:
+    """Chunk, embed and store one queued document (used by the batch workers). Returns the chunk count.
+
+    Safe to run twice for the same document: chunk ids are derived from (doc_id, position) and
+    leftovers of an earlier, interrupted attempt are removed first, so a retry never duplicates.
+    """
+    docs = chunk(filename, data)
+    for d in docs:
+        d.metadata["doc_id"] = doc_id
+    _ensure_collection()
+    client.delete(COLLECTION, points_selector=_source_filter("doc_id", doc_id))
+    ids = [str(uuid.uuid5(uuid.NAMESPACE_URL, f"{doc_id}/{i}")) for i in range(len(docs))]
+    # one embedding request per EMBED_BATCH_SIZE chunks instead of one per chunk
+    _store().add_documents(docs, ids=ids, batch_size=EMBED_BATCH_SIZE)
+    return len(docs)
 
 
 def _doc_ids_for(filename: str) -> set[str]:
@@ -101,6 +128,8 @@ def list_documents() -> list[dict]:
 
 def sync_documents() -> int:
     """One-off at startup: record documents that were indexed before the metadata table existed."""
+    for doc_id in doc_store.stale_indexing():  # a crashed upload would otherwise block re-uploading that file
+        delete_document(doc_id)
     return doc_store.backfill(_list_from_qdrant(), storage)
 
 

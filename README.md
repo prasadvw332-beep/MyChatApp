@@ -17,30 +17,66 @@ A ChatGPT-style chat app that answers questions from your own documents, running
 ## Project structure
 
 ```
-backend/
+backend/                    Python API + ingestion workers (one Docker image)
   app/
-    main.py            FastAPI app, CORS, router registration
-    config.py          settings from environment variables
-    schemas.py         request models
-    prompts.py         system prompts
-    api/
-      chat.py          POST /chat, POST /title
-      documents.py     GET/DELETE /documents, POST /upload, GET /documents/{id}/file
-    services/
-      llm.py           Ollama chat models and embeddings
-      chunking.py      text extraction and section-aware chunking
-      rag.py           Qdrant indexing, listing, deletion, retrieval
-      storage.py       original files in MinIO
-  .env.example
-  pyproject.toml
-frontend/
-  index.html
-  src/
-    main.js
-    style.css
-  .env.example
-  package.json
+    main.py                 creates the FastAPI app: middleware, startup, mounts api_router
+    core/                   cross-cutting plumbing, used by everything
+      config.py             settings from environment variables
+      db.py                 SQLAlchemy engine/session, runs migrations at startup
+      security.py           password hashing, session tokens, login throttling
+    models/                 database tables, one file per area
+      user.py, chat.py, document.py, evaluation.py
+    schemas/                request/response models shared between modules
+      chat.py
+    api/                    HTTP layer (thin: validate input, call rag/services, shape output)
+      router.py             all routes in one place; which are public / need a login
+      deps.py               shared dependencies (CurrentUser)
+      routes/
+        health.py           GET /health (for Docker/Kubernetes probes)
+        auth.py             /auth/register, /auth/login, /auth/me, /auth/logout
+        chat.py             POST /chat (retrieve -> answer, streamed), POST /title
+        chats.py            chat history
+        documents.py        GET/DELETE /documents, POST /upload, GET /documents/{id}/file
+        ingest.py           batch ingestion: POST/GET /ingest/batches, /ingest/retry-failed
+        evals.py            RAGAS runs
+    prompts/                prompt templates, one file per feature
+      rag.py, title.py
+    rag/                    the RAG technique: knowledge base + answering from it
+      chunking.py           text extraction and section-aware chunking
+      knowledge_base.py     index / retrieve / delete documents in Qdrant
+      answer.py             retrieved chunks + chat history -> model messages
+    ingestion/              batch pipeline for thousands of documents
+      queue.py              queue in PostgreSQL: batches, claiming, retries, progress
+      worker.py             python -m app.ingestion.worker  (run 3)
+      cli.py                python -m app.ingestion.cli FOLDER
+    services/               shared building blocks (used by rag, ingestion, future agents)
+      llm.py                Ollama chat models and embeddings
+      storage.py            original files in MinIO
+      doc_store.py          document metadata in PostgreSQL
+  migrations/               Alembic database migrations
+  evals/                    RAGAS evaluation dataset and runner
+  Dockerfile
+frontend/                   Vite + vanilla JS (built into an nginx image)
+  src/                      main.js, auth.js, evals.js, lib.js, style.css
+  nginx.conf                serves the site, proxies /api to the backend
+  Dockerfile
+deploy/                     how to run it (see deploy/README.md)
+  docker-compose.yml        everything on one machine
+  k8s/                      Kubernetes manifests (Deployments, Services, workers, ...)
+.github/workflows/          CI/CD: build images, push to ghcr.io, deploy
 ```
+
+### Where new things go
+
+| Adding... | Put it in |
+|---|---|
+| a new endpoint | `api/routes/<feature>.py`, then one line in `api/router.py` |
+| a new table | `models/<area>.py`, export it in `models/__init__.py`, then an Alembic migration |
+| a new setting | `core/config.py` (+ `.env.example`, `deploy/k8s/configmap.yaml`) |
+| a new prompt | `prompts/<feature>.py` |
+| an agent layer | `app/agents/` (next to `rag/`): agent loop, `tools/` (e.g. a tool calling `knowledge_base.retrieve`), prompts in `prompts/agents.py` |
+| a new external system (Redis, S3, an API) | a client in `services/` |
+| a background job | `ingestion/` style: its own package with a worker entry point |
 
 ## Prerequisites
 
@@ -60,6 +96,8 @@ docker run -d --name minio -p 9000:9000 -p 9001:9001 \
 
 You also need [uv](https://docs.astral.sh/uv/) and Node.js.
 
+To run everything in containers instead (Docker Compose or Kubernetes), see [deploy/README.md](deploy/README.md).
+
 ## Run
 
 Backend (http://localhost:8000):
@@ -76,6 +114,36 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## Batch ingestion (thousands of documents)
+
+Uploading through the UI indexes one file per request. For bulk loads there is a queue with a pool of workers:
+
+```
+ingestion.cli (producer) ──► MinIO (files) + PostgreSQL (one row per document, 100 per batch)
+                                               │  SELECT ... FOR UPDATE SKIP LOCKED
+                              ┌────────────────┼────────────────┐
+                           worker 1         worker 2         worker 3      (python -m app.ingestion.worker)
+                              └──► extract ─► chunk ─► embed (64 chunks/request) ─► Qdrant
+```
+
+- Batches run in order: batch 2 starts when every document in batch 1 is `ready` or `failed`. Inside a batch, whichever worker is free takes the next document.
+- A failed document is retried up to 3 times, then marked `failed` with its error. Files without readable text fail at once.
+- If a worker dies, its document is taken over by another worker after 10 minutes. Chunk ids are derived from the document id, so a retry never duplicates chunks.
+- On shutdown (Ctrl+C, `docker compose down`, Kubernetes scale-down) a worker finishes its current document first.
+
+```bash
+cd backend
+uv run python -m app.ingestion.worker              # start one worker per terminal (e.g. 3)
+uv run python -m app.ingestion.cli ~/my-documents  # queue every PDF/TXT/MD under the folder
+uv run python -m app.ingestion.cli --status        # progress per batch
+uv run python -m app.ingestion.cli --failures 4    # why documents in batch 4 failed
+uv run python -m app.ingestion.cli --retry-failed
+```
+
+The same is available over HTTP: `POST /ingest/batches` (multi-file upload), `GET /ingest/batches`, `GET /ingest/batches/{id}/failures`, `POST /ingest/retry-failed`. In Kubernetes the workers are `deploy/k8s/worker-deployment.yaml` (3 replicas).
+
+The throughput limit is embedding, not the number of workers: all workers share one Ollama. `OLLAMA_NUM_PARALLEL=3` lets it serve them at the same time. Beyond that, more speed needs more Ollama replicas or a GPU.
 
 ## Evaluation (RAGAS)
 

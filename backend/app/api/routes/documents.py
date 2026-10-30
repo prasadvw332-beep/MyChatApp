@@ -6,9 +6,10 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 
-from app.config import MAX_UPLOAD_MB
-from app.services import doc_store, rag, storage
-from app.services.chunking import SUPPORTED
+from app.core.config import MAX_UPLOAD_MB
+from app.rag import knowledge_base
+from app.rag.chunking import SUPPORTED
+from app.services import doc_store, storage
 
 router = APIRouter()
 
@@ -16,7 +17,7 @@ router = APIRouter()
 @router.get("/documents")
 async def documents():
     try:
-        return await asyncio.to_thread(rag.list_documents)
+        return await asyncio.to_thread(knowledge_base.list_documents)
     except Exception as e:
         raise HTTPException(503, f"Could not load documents (is PostgreSQL running?): {e}")
 
@@ -44,8 +45,8 @@ async def upload(file: UploadFile):
     if len(data) > MAX_UPLOAD_MB * 1024 * 1024:
         raise HTTPException(413, f"File is larger than {MAX_UPLOAD_MB} MB.")
     try:
-        return await asyncio.to_thread(rag.ingest, name, data)
-    except rag.DuplicateDocument as e:
+        return await asyncio.to_thread(knowledge_base.ingest, name, data)
+    except knowledge_base.DuplicateDocument as e:
         raise HTTPException(409, str(e))
     except ValueError as e:
         raise HTTPException(422, str(e))
@@ -56,7 +57,7 @@ async def upload(file: UploadFile):
 @router.delete("/documents/{doc_id}")
 async def delete_document(doc_id: str):
     try:
-        await asyncio.to_thread(rag.delete_document, doc_id)
+        await asyncio.to_thread(knowledge_base.delete_document, doc_id)
     except Exception as e:
         raise HTTPException(503, f"Could not delete (are Qdrant and PostgreSQL running?): {e}")
     return {"ok": True}

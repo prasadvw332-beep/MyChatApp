@@ -1,0 +1,6 @@
+# Files Docker should NOT send to the build (smaller, faster, and no secrets in the image)
+.venv/
+__pycache__/
+*.pyc
+.env
+evals/results/

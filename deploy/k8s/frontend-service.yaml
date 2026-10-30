@@ -1,0 +1,22 @@
+# This Service is how users OUTSIDE the cluster reach the app.
+#
+# type: LoadBalancer asks the environment for an external load balancer:
+#   - Docker Desktop Kubernetes: maps it to http://localhost (port 80)
+#   - AWS EKS: creates an AWS Elastic Load Balancer with a public DNS name
+#     (see `kubectl get svc frontend -n mychatapp`, column EXTERNAL-IP)
+#
+# Other types you will meet:
+#   ClusterIP - internal only (see backend-service.yaml)
+#   NodePort  - opens the same port (30000-32767) on every node
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: mychatapp
+spec:
+  type: LoadBalancer
+  selector:
+    app: frontend
+  ports:
+    - port: 80
+      targetPort: 80

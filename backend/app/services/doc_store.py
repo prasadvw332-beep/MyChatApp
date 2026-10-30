@@ -5,8 +5,9 @@ import os
 from datetime import datetime, timezone
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-from app.db import SessionLocal
+from app.core.db import SessionLocal
 from app.models import Document
 
 
@@ -19,13 +20,26 @@ def find_duplicate(digest: str) -> Document | None:
         return db.scalars(select(Document).where(Document.sha256 == digest, Document.status == "ready")).first()
 
 
+class Duplicate(Exception):
+    """A document with the same content hash already exists."""
+
+
 def create(doc_id: str, filename: str, data: bytes, digest: str) -> None:
-    with SessionLocal.begin() as db:
-        db.add(Document(
-            doc_id=doc_id, filename=filename, ext=os.path.splitext(filename)[1].lower().lstrip("."),
-            size_bytes=len(data), sha256=digest, minio_key=f"{doc_id}/{filename}",
-            status="indexing", uploaded_at=datetime.now(timezone.utc),
-        ))
+    try:
+        with SessionLocal.begin() as db:
+            db.add(Document(
+                doc_id=doc_id, filename=filename, ext=os.path.splitext(filename)[1].lower().lstrip("."),
+                size_bytes=len(data), sha256=digest, minio_key=f"{doc_id}/{filename}",
+                status="indexing", uploaded_at=datetime.now(timezone.utc),
+            ))
+    except IntegrityError:
+        raise Duplicate() from None
+
+
+def stale_indexing() -> list[str]:
+    """Uploads left 'indexing' by a crash; at startup nothing is legitimately in progress."""
+    with SessionLocal() as db:
+        return list(db.scalars(select(Document.doc_id).where(Document.status == "indexing")))
 
 
 def mark_ready(doc_id: str, chunks: int) -> None:
@@ -49,7 +63,7 @@ def ids_for_filename(filename: str) -> set[str]:
 def _out(d: Document) -> dict:
     return {
         "doc_id": d.doc_id, "filename": d.filename, "chunks": d.chunks, "size_bytes": d.size_bytes,
-        "ext": d.ext, "status": d.status, "tags": d.tags or [],
+        "ext": d.ext, "status": d.status, "error": d.error, "tags": d.tags or [],
         "uploaded_at": d.uploaded_at.isoformat(timespec="seconds"),
     }
 

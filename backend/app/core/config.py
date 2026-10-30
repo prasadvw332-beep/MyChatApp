@@ -25,5 +25,18 @@ MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin123")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "documents")
 
 # API
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*").split(",")
+# Cookies need explicit origins ("*" is not allowed together with credentials)
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+
+# Login sessions: a signed JWT in an httpOnly cookie. Set JWT_SECRET so sessions survive restarts.
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"  # true when served over https
 MAX_UPLOAD_MB = 20
+
+# Batch ingestion (app/ingestion/)
+INGEST_BATCH_SIZE = int(os.getenv("INGEST_BATCH_SIZE", "100"))  # documents per batch
+INGEST_MAX_ATTEMPTS = int(os.getenv("INGEST_MAX_ATTEMPTS", "3"))  # then the document is marked failed
+# a document 'processing' for longer than this is assumed to belong to a dead worker and is retried
+INGEST_LEASE_SECONDS = int(os.getenv("INGEST_LEASE_SECONDS", "600"))
+EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "64"))  # chunks per embedding request

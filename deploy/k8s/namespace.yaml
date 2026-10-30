@@ -1,0 +1,7 @@
+# A Namespace is a "folder" inside the cluster. Everything for this app lives in
+# "mychatapp", so `kubectl get all -n mychatapp` shows only our things, and
+# `kubectl delete namespace mychatapp` removes all of it at once.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mychatapp

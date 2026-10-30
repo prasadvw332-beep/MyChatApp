@@ -3,8 +3,8 @@
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
-from app.prompts import PLAIN_PROMPT, RAG_PROMPT
-from app.schemas import Message
+from app.prompts.rag import PLAIN_PROMPT, RAG_PROMPT
+from app.schemas.chat import Message
 
 
 def format_context(docs: list[Document]) -> str:

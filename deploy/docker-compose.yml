@@ -1,0 +1,115 @@
+# Run the whole app with ONE command (from the project root):
+#   docker compose -f deploy/docker-compose.yml up --build
+# Then open http://localhost:8080
+#
+# Compose is the "small brother" of Kubernetes: it runs several containers on one
+# machine and connects them on a private network where each service name
+# (backend, postgres, qdrant, ...) is also its hostname.
+# Compare each service here with its file in deploy/k8s/ to see how the ideas map.
+
+services:
+  # Note: ":latest" is fine for learning; real deployments pin exact versions
+  # (e.g. qdrant/qdrant:v1.x.y) so a rebuild never silently changes what runs.
+
+  # ---------- our two images (built from the Dockerfiles) ----------
+  frontend:
+    build: ../frontend
+    ports:
+      - "8080:80"            # host port 8080 -> container port 80 (nginx)
+    depends_on:
+      - backend
+
+  backend:
+    build: ../backend
+    # no "ports": only the frontend (nginx) talks to it, over the internal network
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      QDRANT_URL: http://qdrant:6333
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/mychatapp
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      CORS_ORIGINS: http://localhost:8080
+      JWT_SECRET: change-me-to-a-long-random-string
+    depends_on:
+      postgres:
+        condition: service_healthy   # wait until Postgres accepts connections
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+      ollama:
+        condition: service_started
+
+  # Ingestion workers: same image as the backend, different command, 3 copies.
+  # Queue a folder:  docker compose -f deploy/docker-compose.yml run --rm -v D:/my-docs:/docs worker python -m app.ingestion.cli /docs
+  worker:
+    build: ../backend
+    command: ["python", "-m", "app.ingestion.worker"]
+    deploy:
+      replicas: 3
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      QDRANT_URL: http://qdrant:6333
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/mychatapp
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+    stop_grace_period: 5m   # time to finish the current document on `docker compose down`
+    depends_on:
+      - backend             # the backend runs the database migrations at startup
+
+  # ---------- the services the backend depends on (public images) ----------
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mychatapp
+    volumes:
+      - postgres-data:/var/lib/postgresql/data   # data survives container restarts
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+  minio:
+    image: pgsty/minio:latest   # same image as in the README
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9001:9001"          # MinIO web console, handy for looking at uploaded files
+    volumes:
+      - minio-data:/data
+
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_NUM_PARALLEL: 3        # one request per worker at the same time
+      OLLAMA_MAX_LOADED_MODELS: 2   # chat + embedding model both stay loaded
+    volumes:
+      - ollama-data:/root/.ollama   # downloaded models live here
+
+  # One-off job: download the models into Ollama, then exit.
+  ollama-pull:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434   # the CLI talks to the ollama service
+    entrypoint: ["sh", "-c", "sleep 5 && ollama pull llama3.2:1b && ollama pull nomic-embed-text"]
+    depends_on:
+      - ollama
+    restart: "no"
+
+# Named volumes: managed by Docker, kept until you run `docker compose down -v`
+volumes:
+  postgres-data:
+  qdrant-data:
+  minio-data:
+  ollama-data:

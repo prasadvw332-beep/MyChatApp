@@ -1,0 +1,147 @@
+# GitHub Actions: CI/CD for MyChatApp.
+#
+# CI (Continuous Integration): on every pull request, check that both images still build.
+# CD (Continuous Delivery):    on every push to main, build the images, push them to
+#                              GitHub Container Registry (ghcr.io), then deploy to Kubernetes.
+#
+# Where this runs: on GitHub's servers ("runners"), not on your laptop.
+# See the runs in your repo: GitHub -> Actions tab.
+
+name: CI/CD
+
+# WHEN the workflow runs
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:        # adds a "Run workflow" button in the Actions tab
+
+# Settings shared by all jobs
+env:
+  REGISTRY: ghcr.io
+  # ghcr.io/<github-user>/<image>. Image names must be lowercase.
+  IMAGE_PREFIX: ghcr.io/prasadvw332-beep/mychatapp
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: build both images, and push them (only on main, not for pull requests)
+  # ---------------------------------------------------------------------------
+  build:
+    runs-on: ubuntu-latest
+
+    # The automatic GITHUB_TOKEN may read the code and write packages (images) to ghcr.io
+    permissions:
+      contents: read
+      packages: write
+
+    # A matrix runs this job twice in parallel: once for backend, once for frontend
+    strategy:
+      matrix:
+        component: [backend, frontend]
+
+    steps:
+      # 1. Download the repo's code onto the runner
+      - uses: actions/checkout@v4
+
+      # 2. Buildx = Docker's modern builder (needed for caching below)
+      - uses: docker/setup-buildx-action@v3
+
+      # 3. Log in to ghcr.io. No password to manage: GitHub provides GITHUB_TOKEN.
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. Build (and maybe push). Each image gets two tags:
+      #      :<commit sha>  exact, never changes -> what we deploy (easy rollback)
+      #      :latest        convenience tag pointing to the newest build of main
+      - name: Build and push ${{ matrix.component }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.component }}          # folder containing the Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:${{ github.sha }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.component }}:latest
+          # Reuse layers from earlier runs (e.g. pip install) so builds take seconds
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  # ---------------------------------------------------------------------------
+  # Job 2: deploy to Kubernetes (imagined: AWS EKS).
+  #
+  # Turned off until you have a cluster: it only runs when the repository variable
+  # DEPLOY_ENABLED is "true" (GitHub -> Settings -> Secrets and variables -> Actions -> Variables).
+  # ---------------------------------------------------------------------------
+  deploy:
+    needs: build                  # wait for both images to be pushed
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+
+    # "production" environment: lets you require a manual approval before deploying
+    # (GitHub -> Settings -> Environments -> production -> Required reviewers)
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write             # lets GitHub prove its identity to AWS (OIDC), so no AWS keys are stored
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Log in to AWS by assuming an IAM role that trusts this GitHub repo
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      # Write a kubeconfig so kubectl talks to the EKS cluster
+      - name: Connect kubectl to the cluster
+        run: aws eks update-kubeconfig --name mychatapp-cluster --region ap-south-1
+
+      # Real secrets come from GitHub Secrets, NOT from deploy/k8s/secret.yaml in the repo.
+      # "--dry-run=client -o yaml | kubectl apply" = create the Secret, or update it if it exists.
+      # Secrets are passed as env variables (not pasted into the script), so special
+      # characters in a password can't break or inject shell commands. GitHub also
+      # masks them as *** in the logs.
+      - name: Create/update the Kubernetes Secret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+        run: |
+          kubectl create namespace mychatapp --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic backend-secrets -n mychatapp \
+            --from-literal=DATABASE_URL="$DATABASE_URL" \
+            --from-literal=JWT_SECRET="$JWT_SECRET" \
+            --from-literal=MINIO_ACCESS_KEY="$MINIO_ACCESS_KEY" \
+            --from-literal=MINIO_SECRET_KEY="$MINIO_SECRET_KEY" \
+            --from-literal=MINIO_ROOT_USER="$MINIO_ACCESS_KEY" \
+            --from-literal=MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY" \
+            --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Point the manifests at the images we just pushed (instead of the local
+      # names like mychatapp-backend:1.0), and leave out the dev secret.yaml.
+      # This only changes the runner's copy of the files, not your repo.
+      - name: Set image tags
+        working-directory: deploy/k8s
+        run: |
+          kustomize edit remove resource secret.yaml
+          kustomize edit set image \
+            mychatapp-backend=${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }} \
+            mychatapp-frontend=${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
+
+      # Apply everything and wait until the new pods are healthy.
+      # If the rollout fails, the step fails and the Actions tab shows a red X.
+      - name: Deploy
+        run: |
+          kubectl apply -k deploy/k8s/
+          kubectl rollout status deploy/backend -n mychatapp --timeout=5m
+          kubectl rollout status deploy/frontend -n mychatapp --timeout=5m

@@ -3,7 +3,7 @@
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
-from app.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
+from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
 
 
 class PrefixedEmbeddings(Embeddings):

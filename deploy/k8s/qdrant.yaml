@@ -1,0 +1,69 @@
+# Qdrant: the vector database holding the document chunks and their embeddings.
+#
+# Here we use a simpler pattern than postgres.yaml: a Deployment + a separately
+# created PersistentVolumeClaim (PVC). A PVC is a request for disk: "give me 5Gi".
+# The cluster's StorageClass provides the actual disk (on AWS: an EBS volume).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qdrant-data
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qdrant
+  namespace: mychatapp
+spec:
+  replicas: 1
+  # "Recreate" stops the old pod before starting the new one. Needed because a
+  # ReadWriteOnce disk can't be attached to two pods at the same time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: qdrant
+  template:
+    metadata:
+      labels:
+        app: qdrant
+    spec:
+      containers:
+        - name: qdrant
+          image: qdrant/qdrant:latest
+          ports:
+            - containerPort: 6333   # HTTP API (what the backend uses)
+          volumeMounts:
+            - name: storage
+              mountPath: /qdrant/storage
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 6333
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 2Gi
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: qdrant-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qdrant
+  namespace: mychatapp
+spec:
+  selector:
+    app: qdrant
+  ports:
+    - port: 6333
+      targetPort: 6333

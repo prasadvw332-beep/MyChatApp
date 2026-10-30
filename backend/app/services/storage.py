@@ -8,7 +8,7 @@ import os
 
 from minio import Minio
 
-from app.config import MINIO_ACCESS_KEY, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECRET_KEY
+from app.core.config import MINIO_ACCESS_KEY, MINIO_BUCKET, MINIO_ENDPOINT, MINIO_SECRET_KEY
 
 client = Minio(
     MINIO_ENDPOINT,

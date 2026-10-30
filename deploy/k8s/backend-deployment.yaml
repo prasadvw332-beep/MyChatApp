@@ -1,0 +1,83 @@
+# A Deployment tells Kubernetes: "keep N copies (replicas) of this container running".
+# If a pod crashes or its node dies, Kubernetes starts a new one. When you change the
+# image tag, it replaces pods one by one (rolling update) so the app never goes down.
+#
+# Hierarchy:  Deployment -> ReplicaSet -> Pods -> Containers
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: mychatapp
+  labels:
+    app: backend
+spec:
+  # Two copies: requests are spread over both, and one can die without an outage.
+  # (Both run the Alembic migrations on startup; that's harmless here because
+  # they're idempotent, but big apps run migrations in a separate Job.)
+  replicas: 2
+
+  # Which pods belong to this Deployment: those with the label app=backend.
+  selector:
+    matchLabels:
+      app: backend
+
+  # Rolling update: start 1 new pod before stopping an old one, never go below 2 ready.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  # The pod template: what each copy looks like.
+  template:
+    metadata:
+      labels:
+        app: backend          # must match selector above AND the Service's selector
+    spec:
+      containers:
+        - name: backend
+          # Locally (Docker Desktop Kubernetes) this is the image you built with
+          #   docker build -t mychatapp-backend:1.0 ./backend
+          # On AWS it would be your ECR registry, e.g.
+          #   123456789012.dkr.ecr.ap-south-1.amazonaws.com/mychatapp-backend:1.0
+          image: mychatapp-backend:1.0
+          imagePullPolicy: IfNotPresent   # use the local image, don't try to download it
+
+          ports:
+            - containerPort: 8000
+
+          # Environment variables: every key from the ConfigMap and the Secret.
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+
+          # Requests = what the scheduler reserves on a node for this pod.
+          # Limits   = the hard cap; above the memory limit the container is killed (OOMKilled).
+          resources:
+            requests:
+              cpu: 100m        # 0.1 of a CPU core
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+
+          # Readiness: "can this pod receive traffic yet?" Until it passes, the Service
+          # sends no requests here (e.g. while the app is still starting up).
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+          # Liveness: "is this pod still alive?" If it fails 3 times in a row,
+          # Kubernetes restarts the container (e.g. the process hung).
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3

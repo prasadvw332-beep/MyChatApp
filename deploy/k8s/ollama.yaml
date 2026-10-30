@@ -1,0 +1,97 @@
+# Ollama: runs the LLM (llama3.2:1b) and the embedding model (nomic-embed-text).
+#
+# This is the heaviest part of the app. On AWS you would put it on a GPU node
+# (e.g. g5.xlarge) by adding to the pod spec:
+#     resources: { limits: { nvidia.com/gpu: 1 } }
+# or swap Ollama for a managed model API (e.g. Amazon Bedrock).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi           # the models are a few GB; keep them across restarts
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  namespace: mychatapp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - containerPort: 11434
+          env:
+            # Serve up to 3 requests at once (one per ingestion worker) instead of
+            # queueing them. Each extra slot costs some memory.
+            - name: OLLAMA_NUM_PARALLEL
+              value: "3"
+            - name: OLLAMA_MAX_LOADED_MODELS   # keep the chat AND the embedding model in memory
+              value: "2"
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 11434
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              memory: 6Gi
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ollama-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  namespace: mychatapp
+spec:
+  selector:
+    app: ollama
+  ports:
+    - port: 11434
+      targetPort: 11434
+---
+# A Job runs a pod until it SUCCEEDS once, then stops (unlike a Deployment, which
+# keeps pods running forever). Perfect for one-off tasks like downloading models.
+# It uses the ollama CLI pointed at the ollama Service above.
+#   kubectl logs -n mychatapp job/ollama-pull-models -f    # watch the download
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-pull-models
+  namespace: mychatapp
+spec:
+  backoffLimit: 10            # retry (e.g. while the ollama pod is still starting)
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull
+          image: ollama/ollama:latest
+          env:
+            - name: OLLAMA_HOST
+              value: http://ollama:11434
+          command: ["sh", "-c", "ollama pull llama3.2:1b && ollama pull nomic-embed-text"]

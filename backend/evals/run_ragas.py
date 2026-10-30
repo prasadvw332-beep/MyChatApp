@@ -9,7 +9,7 @@ The same run can be started from the app's Evaluation page (POST /evals/run).
 Results are saved to the eval_runs table in PostgreSQL (DATABASE_URL), which is where the page reads them from.
 
 Two phases, so Ollama doesn't swap models on every question:
-  1. Answer every question with the app's own pipeline (rag.retrieve + build_messages + llm).
+  1. Answer every question with the app's own pipeline (knowledge_base.retrieve + build_messages + llm).
   2. Score the answers with RAGAS, using a local judge model (EVAL_MODEL).
 
 Metrics:
@@ -33,12 +33,12 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from app.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
-from app.db import SessionLocal, init_db
+from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
+from app.core.db import SessionLocal, init_db
 from app.models import EvalRun
-from app.schemas import Message
-from app.services import rag
-from app.services.answer import build_messages
+from app.schemas.chat import Message
+from app.rag import knowledge_base
+from app.rag.answer import build_messages
 from app.services.llm import llm
 
 # Defaults to the chat model so no extra download is needed. A small judge gives rough scores;
@@ -65,7 +65,7 @@ def load_dataset(path: Path = DATASET, limit: int | None = None) -> list[dict]:
 async def generate(rows: list[dict], progress: Progress) -> None:
     """Fill in response + retrieved contexts for each row, exactly as /chat would."""
     for i, row in enumerate(rows, 1):
-        docs = await asyncio.to_thread(rag.retrieve, row["question"])
+        docs = await asyncio.to_thread(knowledge_base.retrieve, row["question"])
         messages = build_messages([Message(role="user", content=row["question"])], docs)
         row["response"] = (await llm.ainvoke(messages)).content
         row["contexts"] = [
@@ -200,7 +200,7 @@ def save_run(result: dict) -> None:
     init_db()
     fields = {k: v for k, v in result.items() if k != "created_at"}
     with SessionLocal.begin() as db:
-        db.add(EvalRun(**fields, created_at=datetime.fromisoformat(result["created_at"])))
+        db.add(EvalRun(**fields, created_at=datetime.fromisoformat(result["created_at"]).astimezone()))
 
 
 def _to_dict(run: EvalRun) -> dict:

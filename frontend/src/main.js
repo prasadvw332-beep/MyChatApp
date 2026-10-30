@@ -3,6 +3,7 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { API_BASE, $, el, errorFrom } from "./lib.js";
 import { initEvals } from "./evals.js";
+import { logout, requireLogin } from "./auth.js";
 
 const API = API_BASE + "/chat";
 const fileUrl = (docId) => `${API_BASE}/documents/${encodeURIComponent(docId)}/file`;
@@ -686,8 +687,10 @@ function renderDocs() {
     name.rel = "noopener noreferrer";
     const meta = d.status === "ready"
       ? [fmtSize(d.size_bytes), `${d.chunks} chunk${d.chunks === 1 ? "" : "s"}`].filter(Boolean).join(" · ")
-      : "Indexing…";
-    text.append(name, el("span", "doc-meta", meta));
+      : { queued: "Queued", failed: "Failed" }[d.status] || "Indexing…";
+    const metaEl = el("span", "doc-meta", meta);
+    if (d.status === "failed" && d.error) metaEl.title = d.error;
+    text.append(name, metaEl);
 
     const actions = el("div", "item-actions");
     const del = el("button", "danger");
@@ -815,5 +818,10 @@ document.querySelectorAll(".suggestion").forEach((s) =>
 
 renderAll();
 updateSend();
-refreshDocs();
-loadChats();
+$("logout").addEventListener("click", logout);
+requireLogin().then((user) => {
+  $("whoami").textContent = user.username;
+  $("whoami").title = "Logged in as " + user.username;
+  refreshDocs();
+  loadChats();
+});
