@@ -80,7 +80,22 @@ backend/                    Python API + ingestion workers (one Docker image)
     api/                    the HTTP contract, through FastAPI's TestClient
   Dockerfile
 frontend/                   Vite + vanilla JS (built into an nginx image)
-  src/                      main.js, auth.js, evals.js, lib.js, style.css
+  src/
+    main.js                 entry point: wires the features together, waits for a login
+    api.js                  every backend call in one place
+    state.js                shared app state (chats, open chat, streaming reply, agent mode)
+    storage.js              per-browser preferences (localStorage)
+    lib.js                  DOM helpers; fetch sends the login cookie
+    ui/                     icons, small widgets (two-step delete, copy button)
+    features/               one module per part of the screen
+      auth.js               login / sign-up screen
+      chats.js              chat history in the sidebar, switching, saving to the server
+      messages.js           rendering the open chat (markdown, code, sources, agent steps)
+      composer.js           input box, send/stop, edit, regenerate, streaming, chat titles
+      documents.js          knowledge base panel: list, upload, drag & drop, delete
+      sidebar.js, theme.js, evals.js
+    style.css
+  tests/                    Vitest in jsdom: helpers + a smoke test of the whole app (fake backend)
   nginx.conf                serves the site, proxies /api to the backend
   Dockerfile
 deploy/                     how to run it (see deploy/README.md)
@@ -148,9 +163,13 @@ npm run dev
 cd backend
 uv run --no-dev --group test pytest     # ~3 s; Qdrant, MinIO, Ollama and PostgreSQL are faked
 uvx ruff check app tests evals migrations
+
+cd frontend
+npm test                                # ~2 s; jsdom + a fake backend, no server needed
+npm run lint
 ```
 
-CI runs both on every push and pull request; images are only built and deployed when they pass.
+CI runs all of these on every push and pull request; images are only built and deployed when they pass.
 
 ## Production behaviour
 

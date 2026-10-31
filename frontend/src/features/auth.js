@@ -1,6 +1,6 @@
 // Login / sign-up screen. The session is an httpOnly cookie set by the backend,
 // so the page only needs to know who is logged in.
-import { API_BASE, $, errorFrom } from "./lib.js";
+import { API_BASE, $, errorFrom } from "../lib.js";
 
 async function post(path, body) {
   const res = await fetch(API_BASE + path, {

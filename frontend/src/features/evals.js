@@ -1,5 +1,5 @@
 // Evaluation view: RAGAS scores for the test questions in backend/evals/dataset.jsonl
-import { API_BASE, el, errorFrom } from "./lib.js";
+import { API_BASE, el, errorFrom } from "../lib.js";
 
 const METRICS = {
   faithfulness: {

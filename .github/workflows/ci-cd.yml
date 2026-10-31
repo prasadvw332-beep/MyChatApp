@@ -47,11 +47,30 @@ jobs:
         # someone edited the JSON by hand, or changed the script without regenerating
         run: python ../deploy/observability/grafana/build_dashboard.py --check
 
+  # Frontend: lint + tests (helpers, and a smoke test that boots the app in jsdom with a fake backend)
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
+
   # ---------------------------------------------------------------------------
   # Job 1: build both images, and push them (only on main, not for pull requests)
   # ---------------------------------------------------------------------------
   build:
-    needs: test
+    needs: [test, frontend-test]   # nothing is built unless backend and frontend checks pass
     runs-on: ubuntu-latest
 
     # The automatic GITHUB_TOKEN may read the code and write packages (images) to ghcr.io
