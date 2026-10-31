@@ -10,9 +10,8 @@ from app.core.logging import _ContextFilter, redact
 from app.main import app
 from app.models import User
 from app.rag import knowledge_base
-from app.services import chat_store, user_store
+from app.repositories import chat_store, user_store
 
-client = TestClient(app)
 USER = User(id=7, username="alice", password_hash=security.hash_password("correct-horse"))
 
 
@@ -56,7 +55,7 @@ def test_authenticated_requests_log_the_user_id(logs, session, monkeypatch):
     assert access.fields["status"] == 200 and "client_ip" in access.fields
 
 
-def test_anonymous_requests_have_no_user_id(logs):
+def test_anonymous_requests_have_no_user_id(client, logs):
     client.get("/health")
     assert logs.named("app.access")[-1].user_id is None
 
@@ -71,7 +70,7 @@ def test_upload_is_audited_with_who_and_what(logs, session, monkeypatch):
                         "chunks": 3}
 
 
-def test_login_audit_records_outcome_but_never_the_password(logs, monkeypatch):
+def test_login_audit_records_outcome_but_never_the_password(client, logs, monkeypatch):
     security.clear_failures("alice|testclient")
     monkeypatch.setattr(user_store, "by_username", lambda name: USER if name == "alice" else None)
 

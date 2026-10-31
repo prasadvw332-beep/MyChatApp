@@ -13,13 +13,13 @@ import signal
 import socket
 import time
 
+from app.clients import storage
 from app.core import config, metrics, telemetry
 from app.core.config import INGEST_MAX_ATTEMPTS
 from app.core.logging import set_request_id, setup_logging
 from app.ingestion import queue
 from app.rag import knowledge_base
 from app.rag.chunking import UnreadableDocument
-from app.services import storage
 
 log = logging.getLogger("worker")
 

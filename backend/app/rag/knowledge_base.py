@@ -1,17 +1,18 @@
-"""RAG pipeline: chunk -> embed + store/search (services/vector_store.py), built on LangChain."""
+"""RAG pipeline: chunk -> embed + store/search (clients/vector_store.py), built on LangChain."""
 
 import uuid
 
 from langchain_core.documents import Document
 
+from app.clients import storage
+from app.clients.vector_store import VectorStore
+from app.clients.vector_store import store as default_store
 from app.core import metrics
 from app.core.config import MIN_SCORE
 from app.core.errors import Conflict
 from app.core.telemetry import span
 from app.rag.chunking import chunk
-from app.services import doc_store, storage
-from app.services.vector_store import VectorStore
-from app.services.vector_store import store as default_store
+from app.repositories import doc_store
 
 TOP_K = 5
 

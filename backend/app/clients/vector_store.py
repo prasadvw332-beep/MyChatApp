@@ -20,8 +20,8 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from app.clients.llm import embeddings
 from app.core.config import EMBED_BATCH_SIZE, QDRANT_COLLECTION, QDRANT_TIMEOUT, QDRANT_URL
-from app.services.llm import embeddings
 
 
 class VectorStore(Protocol):

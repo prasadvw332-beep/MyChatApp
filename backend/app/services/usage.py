@@ -18,9 +18,9 @@ from opentelemetry import trace
 
 from app.core import metrics
 from app.core.config import LLM_PRICE_INPUT_PER_MTOK, LLM_PRICE_OUTPUT_PER_MTOK
-from app.core.db import SessionLocal
 from app.core.logging import user_id as current_user_id
 from app.models import LlmUsage
+from app.repositories import usage_store
 
 log = logging.getLogger(__name__)
 
@@ -67,12 +67,6 @@ async def record(endpoint: str, tally: Tally, fallback_model: str) -> None:
     row = LlmUsage(user_id=current_user_id(), endpoint=endpoint, model=model, input_tokens=tally.input_tokens,
                    output_tokens=tally.output_tokens, cost_usd=cost, created_at=datetime.now(UTC))
     try:
-        await asyncio.to_thread(_save, row)
+        await asyncio.to_thread(usage_store.add, row)
     except Exception:
         log.exception("could not store LLM usage")
-
-
-def _save(row: LlmUsage) -> None:
-    with SessionLocal() as db:
-        db.add(row)
-        db.commit()

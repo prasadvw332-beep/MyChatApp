@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessageChunk, BaseMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
+from app.clients.llm import agent_llm
 from app.core import metrics
 from app.core.config import AGENT_MAX_STEPS, AGENT_MODEL
 from app.core.telemetry import span
@@ -22,7 +23,6 @@ from app.prompts.agents import AGENT_PROMPT
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import Message
 from app.services import usage
-from app.services.llm import agent_llm
 
 log = logging.getLogger(__name__)
 

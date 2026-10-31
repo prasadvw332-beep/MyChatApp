@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from app.clients.llm import llm, title_llm
 from app.core import metrics
 from app.core.config import CHAT_MODEL
 from app.core.errors import DependencyUnavailable
@@ -15,7 +16,6 @@ from app.rag import knowledge_base
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import ChatRequest
 from app.services import usage
-from app.services.llm import llm, title_llm
 
 router = APIRouter()
 log = logging.getLogger(__name__)

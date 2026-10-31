@@ -19,10 +19,11 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, exists, func, or_, select, update
 
+from app.clients import storage
 from app.core.config import INGEST_LEASE_SECONDS, INGEST_MAX_ATTEMPTS
 from app.core.db import SessionLocal
 from app.models import BatchStatus, DocStatus, Document, IngestBatch
-from app.services import doc_store, storage
+from app.repositories import doc_store
 
 PENDING = (DocStatus.QUEUED, DocStatus.PROCESSING)
 BATCH_STATES = (*PENDING, DocStatus.READY, DocStatus.FAILED)  # every status a batch document can have

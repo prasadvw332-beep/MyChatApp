@@ -10,9 +10,9 @@ import logging
 
 from mcp.server.fastmcp import FastMCP
 
+from app.clients import storage
 from app.rag import knowledge_base
 from app.rag.chunking import chunk
-from app.services import storage
 
 MAX_RESULTS = 10
 MAX_READ_CHARS = 8000  # per read_document call; a small model's context fills up fast

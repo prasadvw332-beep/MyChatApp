@@ -4,9 +4,7 @@ import asyncio
 import json
 
 import pytest
-from fastapi.testclient import TestClient
 from langchain_core.documents import Document
-from langchain_core.messages import AIMessageChunk
 
 from app.agents import loop
 from app.agents import tools as agent_tools
@@ -15,34 +13,7 @@ from app.main import app
 from app.models import User
 from app.rag import knowledge_base
 from app.schemas.chat import Message
-from tests.fakes import FakeVectorStore
-
-
-class ScriptedModel:
-    """Plays back one reply per model call; a reply is answer text or a list of (tool, args) calls."""
-
-    def __init__(self, *replies):
-        self.replies = list(replies)
-        self.calls: list[dict] = []  # what each call saw: {"tools": bool, "messages": [...]}
-        self._tools = False
-
-    def bind_tools(self, tools):
-        bound = ScriptedModel()
-        bound.replies, bound.calls, bound._tools = self.replies, self.calls, True  # shared script
-        return bound
-
-    async def astream(self, messages):
-        self.calls.append({"tools": self._tools, "messages": list(messages)})
-        reply = self.replies.pop(0)
-        if isinstance(reply, str):
-            for word in reply.split(" "):
-                yield AIMessageChunk(content=word + " ")
-        else:
-            yield AIMessageChunk(content="", tool_call_chunks=[
-                {"name": name, "args": json.dumps(args), "id": f"call{i}", "index": i}
-                for i, (name, args) in enumerate(reply)
-            ])
-
+from tests.fakes import FakeVectorStore, ScriptedModel
 
 CV = Document("Studied at Pune University.", metadata={"source": "cv.pdf", "page": 1, "doc_id": "d1"})
 
@@ -104,12 +75,12 @@ def test_step_limit_forces_an_answer_without_tools(kb, monkeypatch):
     assert events[-2]["type"] == "token"
 
 
-def test_route_streams_ndjson_events(kb, monkeypatch):
+def test_route_streams_ndjson_events(client, kb, monkeypatch):
     monkeypatch.setattr(loop, "agent_llm", ScriptedModel("Hi there."))
     app.dependency_overrides[deps.current_user] = lambda: User(id=1, username="tester")
     app.state.agent_tools = []
     try:
-        r = TestClient(app).post("/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]})
+        r = client.post("/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]})
     finally:
         app.dependency_overrides.clear()
         del app.state.agent_tools
@@ -118,10 +89,10 @@ def test_route_streams_ndjson_events(kb, monkeypatch):
     assert events[-1] == {"type": "sources", "sources": []}
 
 
-def test_route_is_503_until_the_tools_are_connected(monkeypatch):
+def test_route_is_503_until_the_tools_are_connected(client, monkeypatch):
     app.dependency_overrides[deps.current_user] = lambda: User(id=1, username="tester")
     try:
-        r = TestClient(app).post("/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]})
+        r = client.post("/agent/chat", json={"messages": [{"role": "user", "content": "hi"}]})
     finally:
         app.dependency_overrides.clear()
     assert r.status_code == 503

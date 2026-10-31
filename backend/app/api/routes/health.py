@@ -15,10 +15,10 @@ import time
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
+from app.clients import llm, storage
+from app.clients.vector_store import store
 from app.core import db
 from app.core.telemetry import untraced
-from app.services import llm, storage
-from app.services.vector_store import store
 
 router = APIRouter()
 

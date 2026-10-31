@@ -33,13 +33,13 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from app.clients.llm import llm
 from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
 from app.core.db import SessionLocal, init_db
 from app.models import EvalRun
 from app.rag import knowledge_base
 from app.rag.answer import build_messages
 from app.schemas.chat import Message
-from app.services.llm import llm
 
 # Defaults to the chat model so no extra download is needed. A small judge gives rough scores;
 # set EVAL_MODEL to a larger model for more trustworthy numbers.

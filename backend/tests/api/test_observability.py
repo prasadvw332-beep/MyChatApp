@@ -4,7 +4,6 @@ import logging
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -15,36 +14,29 @@ from sqlalchemy.exc import OperationalError
 
 from app.core import telemetry
 from app.core.logging import _ContextFilter, _JsonFormatter
-from app.main import app
 from app.rag import knowledge_base
 
-client = TestClient(app)
 
-
-def _value(name: str, **labels) -> float:
-    return REGISTRY.get_sample_value(name, labels) or 0.0
-
-
-def test_requests_are_counted_by_route_template():
-    before = _value("http_requests_total", method="GET", route="/health", status="200")
+def test_requests_are_counted_by_route_template(client, metric):
+    before = metric("http_requests_total", method="GET", route="/health", status="200")
     client.get("/health")
-    assert _value("http_requests_total", method="GET", route="/health", status="200") == before + 1
-    assert _value("http_request_duration_seconds_count", method="GET", route="/health") >= 1
+    assert metric("http_requests_total", method="GET", route="/health", status="200") == before + 1
+    assert metric("http_request_duration_seconds_count", method="GET", route="/health") >= 1
 
 
-def test_ids_in_the_path_do_not_become_label_values():
+def test_ids_in_the_path_do_not_become_label_values(client, metric):
     client.delete("/chats/12345")  # 401, but routed: the label is the template
-    assert _value("http_requests_total", method="DELETE", route="/chats/{chat_id}", status="401") >= 1
+    assert metric("http_requests_total", method="DELETE", route="/chats/{chat_id}", status="401") >= 1
     client.get("/no/such/page/987")
-    assert _value("http_requests_total", method="GET", route="unmatched", status="404") >= 1
+    assert metric("http_requests_total", method="GET", route="unmatched", status="404") >= 1
     assert not any("987" in s.labels.get("route", "") for m in REGISTRY.collect() for s in m.samples)
 
 
-def test_question_without_context_is_counted(monkeypatch):
+def test_question_without_context_is_counted(metric, monkeypatch):
     monkeypatch.setattr(knowledge_base.store, "search", lambda q, k: [])
-    before = _value("retrieval_no_context_total")
+    before = metric("retrieval_no_context_total")
     assert knowledge_base.retrieve("anything") == []
-    assert _value("retrieval_no_context_total") == before + 1
+    assert metric("retrieval_no_context_total") == before + 1
 
 
 def test_tracing_is_off_without_an_endpoint():

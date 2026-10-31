@@ -1,44 +1,30 @@
 """HTTP contract: error shape, request ids, health checks, ownership. No backing services needed."""
 
 import pytest
-from fastapi.testclient import TestClient
 
-from app.api import deps
 from app.api.routes import health
-from app.main import app
-from app.models import User
 from app.rag import knowledge_base
-from app.services import chat_store
-
-# no `with`: the lifespan (migrations, Qdrant sync) doesn't run
-client = TestClient(app)
+from app.repositories import chat_store
 
 
-@pytest.fixture
-def logged_in():
-    app.dependency_overrides[deps.current_user] = lambda: User(id=1, username="tester")
-    yield
-    app.dependency_overrides.clear()
-
-
-def test_every_response_has_a_request_id():
+def test_every_response_has_a_request_id(client):
     r = client.get("/health")
     assert r.status_code == 200
     assert len(r.headers["x-request-id"]) == 32
 
 
-def test_caller_request_id_is_echoed_but_sanitized():
+def test_caller_request_id_is_echoed_but_sanitized(client):
     assert client.get("/health", headers={"X-Request-ID": "abc-123"}).headers["x-request-id"] == "abc-123"
     assert client.get("/health", headers={"X-Request-ID": "bad id\nwith newline"}).headers["x-request-id"] != "bad id"
 
 
-def test_errors_share_one_shape():
+def test_errors_share_one_shape(client):
     r = client.get("/documents", headers={"X-Request-ID": "req-1"})
     assert r.status_code == 401
     assert r.json() == {"detail": "Not logged in.", "code": "http_401", "request_id": "req-1"}
 
 
-def test_dependency_failure_does_not_leak_internals(logged_in, monkeypatch):
+def test_dependency_failure_does_not_leak_internals(client, logged_in, monkeypatch):
     def broken():
         raise ConnectionError("password=hunter2 host=10.0.0.5")
 
@@ -49,7 +35,7 @@ def test_dependency_failure_does_not_leak_internals(logged_in, monkeypatch):
     assert "hunter2" not in r.text and "10.0.0.5" not in r.text
 
 
-def test_unhandled_error_is_a_generic_500_with_request_id(logged_in, monkeypatch):
+def test_unhandled_error_is_a_generic_500_with_request_id(client, logged_in, monkeypatch):
     def bug(_user_id):
         raise KeyError("internal detail")
 
@@ -61,7 +47,7 @@ def test_unhandled_error_is_a_generic_500_with_request_id(logged_in, monkeypatch
     assert r.headers["x-request-id"] == "req-500"
 
 
-def test_duplicate_upload_is_409(logged_in, monkeypatch):
+def test_duplicate_upload_is_409(client, logged_in, monkeypatch):
     def duplicate(name, data):
         raise knowledge_base.DuplicateDocument("Already there.")
 
@@ -70,7 +56,7 @@ def test_duplicate_upload_is_409(logged_in, monkeypatch):
     assert (r.status_code, r.json()["code"]) == (409, "duplicate_document")
 
 
-def test_someone_elses_chat_is_not_found(logged_in, monkeypatch):
+def test_someone_elses_chat_is_not_found(client, logged_in, monkeypatch):
     def not_owner(*args):
         raise chat_store.NotOwner()
 
@@ -95,7 +81,7 @@ def _pings(monkeypatch, failing: set[str]):
     ({"ollama"}, "degraded", 200),  # chat breaks, but login and history still work: stay in rotation
     ({"postgres"}, "unavailable", 503),
 ])
-def test_readiness(monkeypatch, failing, status, code):
+def test_readiness(client, monkeypatch, failing, status, code):
     _pings(monkeypatch, failing)
     r = client.get("/health/ready")
     assert (r.status_code, r.json()["status"]) == (code, status)

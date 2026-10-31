@@ -28,10 +28,12 @@ backend/                    Python API + ingestion workers (one Docker image)
       logging.py            JSON logs in production, request id on every line
       middleware.py         request id (X-Request-ID), access log, last-resort 500
       audit.py              audit events: who did what (login, upload, delete, ...)
+      metrics.py            every Prometheus metric, served on :9100
+      telemetry.py          OpenTelemetry tracing (off unless OTEL_EXPORTER_OTLP_ENDPOINT is set)
     models/                 database tables, one file per area
-      user.py, chat.py, document.py, evaluation.py
-    schemas/                request/response models shared between modules
-      chat.py
+      user.py, chat.py, document.py, evaluation.py, usage.py
+    schemas/                request/response bodies (Pydantic), one file per API area
+      chat.py, chats.py, auth.py, documents.py, evals.py
     api/                    HTTP layer (thin: validate input, call rag/services, shape output)
       router.py             all routes in one place; which are public / need a login
       deps.py               shared dependencies (CurrentUser)
@@ -59,16 +61,23 @@ backend/                    Python API + ingestion workers (one Docker image)
       queue.py              queue in PostgreSQL: batches, claiming, retries, progress
       worker.py             python -m app.ingestion.worker  (run 3)
       cli.py                python -m app.ingestion.cli FOLDER
-    services/               shared building blocks (used by rag, ingestion, future agents)
+    clients/                talking to external servers (the only code that does)
       llm.py                Ollama chat models and embeddings
       storage.py            original files in MinIO
       vector_store.py       chunk vectors: VectorStore interface + Qdrant implementation
-      doc_store.py          document metadata in PostgreSQL
-      chat_store.py         chat history in PostgreSQL (scoped to the owner)
-      user_store.py         user accounts in PostgreSQL
+    repositories/           database access (the only code that queries PostgreSQL tables)
+      doc_store.py          document metadata
+      chat_store.py         chat history (scoped to the owner)
+      user_store.py         user accounts
+      usage_store.py        LLM token usage
+    services/               business logic combining the above
+      usage.py              token + cost tracking (metrics, database, trace)
   migrations/               Alembic database migrations
   evals/                    RAGAS evaluation dataset and runner
-  tests/                    unit + API tests with in-memory fakes (no services needed)
+  tests/                    no services needed: fakes.py replaces Qdrant/MinIO/Ollama/PostgreSQL
+    conftest.py             shared fixtures (client, logged_in, metric)
+    unit/                   functions and modules called directly
+    api/                    the HTTP contract, through FastAPI's TestClient
   Dockerfile
 frontend/                   Vite + vanilla JS (built into an nginx image)
   src/                      main.js, auth.js, evals.js, lib.js, style.css
@@ -89,7 +98,11 @@ deploy/                     how to run it (see deploy/README.md)
 | a new setting | `core/config.py` (+ `.env.example`, `deploy/k8s/configmap.yaml`) |
 | a new prompt | `prompts/<feature>.py` |
 | a new agent tool | a tool on an MCP server: ours in `mcp_server/`, or an external server in `MCP_SERVERS_FILE` |
-| a new external system (Redis, S3, an API) | a client in `services/` |
+| a new request/response body | `schemas/<area>.py` |
+| a new external system (Redis, S3, an API) | a client in `clients/` |
+| a new table query | the table's module in `repositories/` (routes never query tables directly) |
+| logic that combines clients, repositories and metrics | `services/` |
+| a test | `tests/unit/` (calls code directly) or `tests/api/` (through HTTP); shared fixtures in `conftest.py` |
 | a background job | `ingestion/` style: its own package with a worker entry point |
 
 ## Prerequisites
