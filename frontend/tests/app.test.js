@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 
 const API = "http://localhost:8000";
 const calls = [];
+const feedback = []; // bodies sent to PUT /feedback
 
 function fakeBackend(url, init = {}) {
   const method = init.method || "GET";
@@ -32,6 +33,10 @@ function fakeBackend(url, init = {}) {
   }
   if (url === `${API}/title`) return json({ title: "A title" });
   if (url.startsWith(`${API}/chats/`) && method === "PUT") return json({ ok: true });
+  if (url === `${API}/feedback`) {
+    feedback.push(JSON.parse(init.body));
+    return json({ ok: true });
+  }
   return json({ detail: "not faked: " + url }, 404);
 }
 
@@ -64,5 +69,26 @@ describe("the app", () => {
     expect(document.querySelector("#messages .row.bot.last .sources").textContent).toContain("cv.pdf · p.2");
     await vi.waitFor(() => expect(calls).toContain("PUT /chats/c1"));
     expect(input.value).toBe("");
+  });
+
+  it("rates an answer: thumbs down asks what was wrong and sends it with the answer", async () => {
+    const lastBot = () => [...document.querySelectorAll("#messages .row.bot")].at(-1);
+    lastBot().querySelector('[aria-label="Bad answer"]').click();
+    await vi.waitFor(() => expect(feedback).toHaveLength(1));
+    expect(feedback[0]).toMatchObject({
+      chatId: "c1", position: 3, rating: "down", mode: "chat", question: "What is in my CV?",
+      answer: "Streamed **answer**", sources: [{ source: "cv.pdf", page: 2, doc_id: "d1" }],
+    });
+    expect(lastBot().querySelector('[aria-label="Bad answer"]').getAttribute("aria-pressed")).toBe("true");
+
+    lastBot().querySelector(".why textarea").value = "Wrong page";
+    lastBot().querySelector(".why .btn.primary").click();
+    await vi.waitFor(() => expect(feedback).toHaveLength(2));
+    expect(feedback[1]).toMatchObject({ rating: "down", comment: "Wrong page" });
+    expect(lastBot().querySelector(".why")).toBeNull();
+
+    lastBot().querySelector('[aria-label="Bad answer"]').click(); // the same thumb again takes it back
+    await vi.waitFor(() => expect(feedback).toHaveLength(3));
+    expect(feedback[2].rating).toBeNull();
   });
 });

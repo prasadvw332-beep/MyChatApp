@@ -143,6 +143,9 @@ async function generate() {
   const agent = state.agentMode;
   try {
     const res = await api.streamReply(agent, c.messages, state.controller.signal);
+    // sent with a rating of this answer, to find its logs and trace (features/feedback.js)
+    reply.mode = agent ? "agent" : "chat";
+    reply.requestId = res.headers.get("X-Request-ID") || undefined;
     if (agent) {
       await readAgentEvents(res, reply, repaint);
     } else {

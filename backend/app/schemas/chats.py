@@ -1,5 +1,7 @@
 """Request bodies of /chats (saved chat history). Field names are the frontend's (camelCase)."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -8,6 +10,7 @@ class MessageIn(BaseModel):
     content: str
     ui: str | None = None
     sources: list[dict] | None = None
+    feedback: Literal["up", "down"] | None = None
     at: int | None = None  # ms since epoch
 
 

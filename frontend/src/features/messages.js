@@ -7,6 +7,7 @@ import { state } from "../state.js";
 import { ICON } from "../ui/icons.js";
 import { actionButton, copyText } from "../ui/widgets.js";
 import { regenerate, startEdit } from "./composer.js";
+import { rate } from "./feedback.js";
 
 const box = $("messages");
 const welcome = $("welcome");
@@ -50,6 +51,14 @@ export function setBubble(bubble, m) {
   }
 }
 
+function thumb(m, i, rating, icon, title) {
+  const b = actionButton(icon, title, () => rate(i, rating));
+  const on = m.feedback === rating;
+  b.classList.toggle("on", on);
+  b.setAttribute("aria-pressed", String(on));
+  return b;
+}
+
 function buildActions(m, i) {
   const isLast = i === state.chat.messages.length - 1;
   if (state.controller && isLast && m.role === "assistant") return null; // still streaming
@@ -60,7 +69,13 @@ function buildActions(m, i) {
       actionButton(ICON.edit, "Edit", () => startEdit(i))
     );
   } else {
-    if (!m.ui) a.append(actionButton(ICON.copy, "Copy", (e) => copyText(m.content, e.currentTarget)));
+    if (!m.ui) {
+      a.append(
+        actionButton(ICON.copy, "Copy", (e) => copyText(m.content, e.currentTarget)),
+        thumb(m, i, "up", ICON.thumbUp, "Good answer"),
+        thumb(m, i, "down", ICON.thumbDown, "Bad answer")
+      );
+    }
     if (isLast) a.append(actionButton(ICON.refresh, "Regenerate", regenerate));
   }
   return a.children.length ? a : null;

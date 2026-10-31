@@ -52,6 +52,10 @@ export const suggestTitle = async (messages) =>
     body: JSON.stringify({ messages: forModel(messages) }),
   })).json()).title;
 
+// A thumbs up/down on an answer (rating null takes it back); see features/feedback.js
+export const sendFeedback = (body) =>
+  request("/feedback", { method: "PUT", headers: JSON_HEADERS, body: JSON.stringify(body) });
+
 /* ---------- documents ---------- */
 export const listDocuments = async () => (await request("/documents")).json();
 

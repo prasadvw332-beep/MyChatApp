@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser
-from app.api.routes import agent, auth, chat, chats, documents, evals, health, ingest
+from app.api.routes import agent, auth, chat, chats, documents, evals, feedback, health, ingest
 
 api_router = APIRouter()
 
@@ -18,4 +18,5 @@ api_router.include_router(agent.router, dependencies=protected)
 api_router.include_router(chats.router, dependencies=protected)
 api_router.include_router(documents.router, dependencies=protected)
 api_router.include_router(evals.router, dependencies=protected)
+api_router.include_router(feedback.router, dependencies=protected)
 api_router.include_router(ingest.router, dependencies=protected)

@@ -103,6 +103,7 @@ All defined in [backend/app/core/metrics.py](../backend/app/core/metrics.py):
 | `retrieval_no_context_total` | | questions where no chunk passed `MIN_SCORE` |
 | `agent_tool_calls_total` | tool, ok | |
 | `guardrail_events_total` | check, action (blocked, flagged, error) | what the [guardrails](guardrails.md) found |
+| `answer_feedback_total` | mode (chat, agent, unknown), rating (up, down) | thumbs given or changed on answers |
 | `rate_limit_rejections_total` | limit (chat, title, upload, eval, register) | requests refused with 429 ([rate limits](configuration.md#rate-limits)) |
 | `rate_limit_errors_total` | | limit checks that failed (PostgreSQL down); those requests went through |
 | `ingest_documents_total` | outcome (indexed, retry, failed) | |
@@ -111,3 +112,18 @@ All defined in [backend/app/core/metrics.py](../backend/app/core/metrics.py):
 Per-user token usage is not a metric (one time series per user doesn't scale in Prometheus): it is the
 `llm_usage` table, which Grafana reads directly. Tempo also turns spans into `traces_spanmetrics_*` metrics,
 which feed the *time per step* panel and the service map.
+
+### User feedback
+
+Users rate answers with a thumbs up or down; a thumbs down asks (optionally) what was wrong. Each rating is a
+row in the `feedback` table with a copy of the question, the answer, its sources and the answer's
+**request id**, so a bad answer leads straight to its log lines and its trace in Tempo. The copy is on
+purpose: an edited or regenerated chat puts a new answer at the same position, and the row must still say
+what was judged. Deleting a chat deletes its feedback.
+
+```sql
+-- the latest thumbs down, with what users said
+SELECT created_at, mode, question, comment, request_id FROM feedback WHERE rating = -1 ORDER BY created_at DESC LIMIT 20;
+-- share of good answers per day
+SELECT date_trunc('day', created_at) AS day, avg((rating + 1) / 2.0) AS satisfaction, count(*) FROM feedback GROUP BY 1 ORDER BY 1;
+```

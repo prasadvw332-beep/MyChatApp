@@ -266,6 +266,9 @@ header { height: 56px; flex: none; display: flex; align-items: center; gap: 4px;
   transition: .15s;
 }
 .act:hover { background: var(--hover); color: var(--text); }
+.act.on, .act.on:hover { color: var(--accent); }
+.row:has(.act.on) .actions { opacity: 1; } /* a given rating stays visible */
+.edit-box.why { margin-top: 8px; }
 
 /* source citations */
 .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 14px; }

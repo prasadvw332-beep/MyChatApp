@@ -8,7 +8,7 @@ from app.api.deps import CurrentUser
 from app.core.audit import audit
 from app.core.errors import InvalidInput, NotFound
 from app.models import Chat, Message, User
-from app.repositories import chat_store
+from app.repositories import chat_store, feedback_store
 from app.schemas.chats import ChatIn
 
 router = APIRouter(prefix="/chats")
@@ -31,7 +31,8 @@ def _out(c: Chat) -> dict:
         "updatedAt": _ms(c.updated_at),
         "messages": [
             {k: v for k, v in
-             {"role": m.role, "content": m.content, "ui": m.ui, "sources": m.sources, "at": _ms(m.created_at)}.items()
+             {"role": m.role, "content": m.content, "ui": m.ui, "sources": m.sources, "feedback": m.feedback,
+              "at": _ms(m.created_at)}.items()
              if v is not None}
             for m in c.messages
         ],
@@ -49,7 +50,7 @@ def save_chat(chat_id: str, body: ChatIn, user: User = CurrentUser):
         raise InvalidInput("Bad chat id.")
     updated = _dt(body.updatedAt)
     messages = [
-        Message(position=i, role=m.role, content=m.content, ui=m.ui, sources=m.sources,
+        Message(position=i, role=m.role, content=m.content, ui=m.ui, sources=m.sources, feedback=m.feedback,
                 created_at=_dt(m.at) if m.at else updated)
         for i, m in enumerate(body.messages)
     ]
@@ -63,5 +64,6 @@ def save_chat(chat_id: str, body: ChatIn, user: User = CurrentUser):
 @router.delete("/{chat_id}")
 def delete_chat(chat_id: str, user: User = CurrentUser):
     chat_store.delete(user.id, chat_id)
+    feedback_store.remove(user.id, chat_id)  # the user asked for the chat to be gone: its ratings go too
     audit("chat.delete", chat_id=chat_id)
     return {"ok": True}

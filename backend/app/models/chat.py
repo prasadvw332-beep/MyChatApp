@@ -34,6 +34,7 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text)
     ui: Mapped[str | None] = mapped_column(String(16))  # "error" | "stopped" for non-answer bubbles
     sources: Mapped[list | None] = mapped_column(JSONB)  # chunks cited by an assistant answer
+    feedback: Mapped[str | None] = mapped_column(String(4))  # "up" | "down": the user's rating (models/feedback.py)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (UniqueConstraint("chat_id", "position", name="uq_messages_chat_position"),)

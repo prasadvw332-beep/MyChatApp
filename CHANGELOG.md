@@ -8,6 +8,10 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **User feedback**: thumbs up/down under every answer, with an optional "what was wrong?" on a thumbs down;
+  stored in PostgreSQL (`feedback`, migration 0007) with a copy of the question, answer, sources and the
+  answer's request id (to find its logs and trace); the rating stays on the saved message;
+  `answer_feedback_total` metric. `feature/user-feedback`
 - **Rate limiting**: per-user limits on the endpoints that run a model or embed documents (chat + agent,
   titles, uploads, eval runs) and per-IP on registration; fixed windows counted in PostgreSQL
   (`rate_limits`, migration 0006) so every replica shares them; `429` with `Retry-After` in the usual
