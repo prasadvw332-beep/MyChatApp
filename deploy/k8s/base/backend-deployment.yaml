@@ -11,17 +11,17 @@ metadata:
   labels:
     app: backend
 spec:
-  # Two copies: requests are spread over both, and one can die without an outage.
-  # (Both run the Alembic migrations on startup; that's harmless here because
-  # they're idempotent, but big apps run migrations in a separate Job.)
-  replicas: 2
+  # No `replicas:` here: the HorizontalPodAutoscaler in autoscaling.yaml sets it (2 to 6), and a
+  # value here would reset the count on every `kubectl apply`. Requests are spread over the copies,
+  # and one can die without an outage. (Every copy runs the Alembic migrations on startup; that's
+  # harmless because of the advisory lock in app/core/db.py, but big apps run them in a separate Job.)
 
   # Which pods belong to this Deployment: those with the label app=backend.
   selector:
     matchLabels:
       app: backend
 
-  # Rolling update: start 1 new pod before stopping an old one, never go below 2 ready.
+  # Rolling update: start 1 new pod before stopping an old one, never fewer ready than before.
   strategy:
     type: RollingUpdate
     rollingUpdate:

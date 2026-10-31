@@ -16,5 +16,7 @@ resources:
   - worker-deployment.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
+  # HPAs for backend, worker and frontend, and PodDisruptionBudgets (needs the metrics-server)
+  - autoscaling.yaml
   # Prometheus, Grafana, Tempo and the OpenTelemetry Collector (with their config files)
   - ../../observability

@@ -8,7 +8,7 @@ metadata:
   labels:
     app: frontend
 spec:
-  replicas: 2
+  # no `replicas:`: the HorizontalPodAutoscaler in autoscaling.yaml sets it (2 to 4)
   selector:
     matchLabels:
       app: frontend

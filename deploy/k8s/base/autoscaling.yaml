@@ -1,0 +1,141 @@
+# Autoscaling: a HorizontalPodAutoscaler (HPA) adds pods when the ones running are busy and removes
+# them when they are idle, between minReplicas and maxReplicas. It owns the replica count, which is
+# why the Deployments have no `replicas:` (every `kubectl apply` would reset it and fight the HPA).
+#
+# It needs the metrics-server (pod CPU and memory): on EKS, as the metrics-server add-on;
+# on Docker Desktop, install it once (deploy/README.md, "Autoscaling"). Without it the HPAs still
+# keep minReplicas running, they just can't measure load, and `kubectl get hpa` shows <unknown>.
+#
+#   kubectl get hpa -n mychatapp --watch      # current vs target, and the replica count
+#
+# CPU targets are averageValue (cores per pod), not a percentage of the request: the requests are
+# kept small so everything fits on a laptop, and "70% of 100m" would scale on noise.
+#
+# Not autoscaled: Ollama (one model server; more copies need more GPUs or RAM, not an HPA),
+# and PostgreSQL / Qdrant / MinIO (stateful, one replica each).
+#
+# Nodes: an HPA only adds pods. When they don't fit, they stay Pending until a node is added:
+# on EKS that means a node group with room to grow, and adding nodes automatically
+# needs Cluster Autoscaler or Karpenter, which are not installed yet.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: mychatapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  # two at all times: one can die (or be rolled) without an outage
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    # The backend mostly waits on Ollama, so CPU climbs with many concurrent requests (streaming,
+    # guardrail checks, JSON, password hashing on logins) rather than with slow ones.
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: AverageValue
+          averageValue: 500m
+    # Not memory: a Python process rarely gives memory back (and each keeps an embedding LRU), so a
+    # memory target would add pods that never let the count come down again.
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0        # react to a burst at once
+      policies:
+        - type: Pods
+          value: 2                          # at most 2 new pods per minute
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300      # only scale down after 5 quiet minutes: no flapping
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+# Ingestion workers. They pull from the queue in PostgreSQL, so more pods = more documents at once,
+# and a scale-down is safe: the pod gets SIGTERM and finishes its document first
+# (terminationGracePeriodSeconds: 300 in worker-deployment.yaml).
+# CPU is a stand-in for "the queue is long" (busy workers extract PDFs and chunk); scaling on the
+# queue length itself needs KEDA (a PostgreSQL scaler on the documents table), a possible next step.
+# The ceiling is Ollama: past what it can embed, extra workers only wait.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker
+  namespace: mychatapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: worker
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: AverageValue
+          averageValue: 400m
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600      # a batch arrives in waves: keep the workers between them
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+---
+# nginx serving static files: rarely busy, but two keep the site up through a pod or node failure.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend
+  namespace: mychatapp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: AverageValue
+          averageValue: 200m
+---
+# PodDisruptionBudgets: voluntary disruptions (a node drained for an upgrade, a node removed by a
+# scale-down) never take away the last ready pod. Crashes are not voluntary: that is what
+# minReplicas: 2 is for.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+  namespace: mychatapp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: backend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: frontend
+  namespace: mychatapp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: frontend

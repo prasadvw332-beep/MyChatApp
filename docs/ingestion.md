@@ -24,6 +24,6 @@ uv run python -m app.ingestion.cli --failures 4    # why documents in batch 4 fa
 uv run python -m app.ingestion.cli --retry-failed
 ```
 
-The same is available over HTTP: `POST /ingest/batches` (multi-file upload), `GET /ingest/batches`, `GET /ingest/batches/{id}/failures`, `POST /ingest/retry-failed`. In Kubernetes the workers are `deploy/k8s/base/worker-deployment.yaml` (3 replicas).
+The same is available over HTTP: `POST /ingest/batches` (multi-file upload), `GET /ingest/batches`, `GET /ingest/batches/{id}/failures`, `POST /ingest/retry-failed`. In Kubernetes the workers are `deploy/k8s/base/worker-deployment.yaml`, scaled from 2 to 8 replicas on CPU by `deploy/k8s/base/autoscaling.yaml`.
 
 The throughput limit is embedding, not the number of workers: all workers share one Ollama. `OLLAMA_NUM_PARALLEL=3` lets it serve them at the same time. Beyond that, more speed needs more Ollama replicas or a GPU.

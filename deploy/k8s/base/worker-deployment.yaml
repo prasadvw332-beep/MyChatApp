@@ -1,12 +1,14 @@
-# Ingestion workers: 3 pods that pull queued documents from PostgreSQL and index them
+# Ingestion workers: pods that pull queued documents from PostgreSQL and index them
 # (download from MinIO -> chunk -> embed with Ollama -> store in Qdrant).
 #
 # Same image as the backend, different command. Notice what is NOT here:
 #   - no Service: workers receive no traffic, they PULL work from the queue
 #   - no readiness probe, and only one port: Prometheus scraping metrics (headless Service worker-metrics)
+#   - no `replicas:`: the HorizontalPodAutoscaler in autoscaling.yaml scales them (2 to 8)
 #
-# Scale up or down at any time; the queue makes sure no document is processed twice:
-#   kubectl scale deploy/worker --replicas=5 -n mychatapp
+# Any number can run at once; the queue makes sure no document is processed twice. To pin a count
+# by hand, change the HPA (kubectl scale would be undone by it):
+#   kubectl patch hpa worker -n mychatapp -p '{"spec":{"minReplicas":5,"maxReplicas":5}}'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,7 +17,6 @@ metadata:
   labels:
     app: worker
 spec:
-  replicas: 3
   selector:
     matchLabels:
       app: worker

@@ -86,7 +86,8 @@ kubectl logs deploy/backend -n mychatapp -f          # backend logs
 kubectl logs job/ollama-pull-models -n mychatapp -f  # model download progress
 kubectl exec -it deploy/backend -n mychatapp -- sh   # a shell inside a backend container
 
-kubectl scale deploy/backend --replicas=3 -n mychatapp    # scale out
+kubectl get hpa -n mychatapp --watch                      # autoscaling: load vs target, replicas
+kubectl top pods -n mychatapp                             # CPU/memory per pod (needs the metrics-server)
 kubectl delete pod <a-backend-pod> -n mychatapp           # watch Kubernetes replace it
 
 kubectl port-forward svc/minio 9001:9001 -n mychatapp     # MinIO console at http://localhost:9001
@@ -98,6 +99,31 @@ kubectl rollout status deploy/backend -n mychatapp
 kubectl rollout undo deploy/backend -n mychatapp          # roll back
 
 kubectl delete namespace mychatapp                        # remove everything
+```
+
+### Autoscaling
+
+The backend (2-6 pods), the ingestion workers (2-8) and the frontend (2-4) are scaled by
+HorizontalPodAutoscalers on CPU: [autoscaling.yaml](k8s/base/autoscaling.yaml),
+with the reasoning behind each number. They own the replica count, so the Deployments have no `replicas:`,
+and `kubectl scale` is undone within seconds: change the HPA's `minReplicas`/`maxReplicas` instead.
+
+HPAs measure load through the **metrics-server**, which Docker Desktop doesn't include. Install it once
+(the extra flag is because Docker Desktop's kubelet has a self-signed certificate; never use it on EKS,
+where the metrics-server is an EKS add-on):
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
+kubectl patch deploy metrics-server -n kube-system --type=json   -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+kubectl top nodes                                    # works after a minute
+```
+
+Without it, `kubectl get hpa` shows `<unknown>` targets and the minimum replicas keep running. To watch it
+scale, send traffic with the synthetic users (standard-library Python, more users = more load) and watch:
+
+```bash
+LOADGEN_URL=http://localhost/api LOADGEN_USERS=10 LOADGEN_PASSWORD=loadgen-demo-password python deploy/loadgen/loadgen.py
+kubectl get hpa -n mychatapp --watch
 ```
 
 ## Step 3 (imagined): the same app on AWS
@@ -207,4 +233,4 @@ when the JSON no longer matches it. Changes made directly in the UI to the provi
 
 - The backend image installs `requirements.txt`, which leaves out dev dependencies like `ragas`. Evaluation runs therefore don't work inside the container. Listing past results still does.
 - Eval results are written to the container's filesystem, so they're lost when the pod restarts.
-- With 2 backend replicas, uploads and chats go to whichever pod the Service picks. That works because all state lives in Postgres/Qdrant/MinIO, not in the pod. This is the "stateless app" rule that makes scaling possible.
+- With several backend replicas (2-6, autoscaled), uploads and chats go to whichever pod the Service picks. That works because all state lives in Postgres/Qdrant/MinIO, not in the pod. This is the "stateless app" rule that makes scaling possible.

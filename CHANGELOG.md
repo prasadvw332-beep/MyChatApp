@@ -8,6 +8,10 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Autoscaling**: HorizontalPodAutoscalers for the backend (2-6), ingestion workers (2-8) and frontend (2-4)
+  on CPU, with scale-down stabilization; PodDisruptionBudgets; the Deployments no longer set `replicas`
+  (the HPAs own it). Docker Desktop needs the metrics-server (`deploy/README.md`, "Autoscaling").
+  `feature/autoscaling`
 - **User feedback**: thumbs up/down under every answer, with an optional "what was wrong?" on a thumbs down;
   stored in PostgreSQL (`feedback`, migration 0007) with a copy of the question, answer, sources and the
   answer's request id (to find its logs and trace); the rating stays on the saved message;
