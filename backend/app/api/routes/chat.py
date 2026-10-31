@@ -1,17 +1,21 @@
 import asyncio
 import json
 import logging
+import time
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from app.clients.llm import llm, title_llm
+from app.core import metrics
+from app.core.config import CHAT_MODEL
 from app.core.errors import DependencyUnavailable
 from app.prompts.title import TITLE_SHOTS, TITLE_SYSTEM
 from app.rag import knowledge_base
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import ChatRequest
-from app.services.llm import llm, title_llm
+from app.services import usage
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -29,6 +33,9 @@ async def title(req: ChatRequest):
         out = await title_llm.ainvoke(messages)
     except Exception as e:
         raise DependencyUnavailable("The language model") from e
+    tally = usage.Tally()
+    tally.add(out)
+    await usage.record("title", tally, CHAT_MODEL)
 
     # clean up quotes / "Title:" prefixes, and reject output that is an answer rather than a title
     lines = (out.content or "").strip().splitlines()
@@ -53,13 +60,22 @@ async def chat(req: ChatRequest):
     sources = cite(docs)
 
     async def token_stream():
+        started, first = time.perf_counter(), True
+        tally = usage.Tally()
         try:
             async for chunk in llm.astream(messages):
+                if first:
+                    metrics.llm_first_token.labels("chat").observe(time.perf_counter() - started)
+                    first = False
+                tally.add(chunk)  # the token counts arrive with the last chunk
                 yield chunk.content
         except Exception:
             # the headers are already sent, so the error can only go into the text itself
             log.exception("chat stream failed")
             yield "\n\n[The language model stopped responding. Please try again.]"
+            return
+        metrics.llm_stream.labels("chat").observe(time.perf_counter() - started)
+        await usage.record("chat", tally, CHAT_MODEL)
 
     return StreamingResponse(
         token_stream(),

@@ -1,0 +1,8 @@
+# Development: the base + the dev Secret (the same local passwords as backend/.env.example).
+#   kubectl apply -k deploy/k8s/overlays/dev
+# Uses the locally built images (mychatapp-backend:1.0, mychatapp-frontend:1.0) and APP_ENV=development.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - secret.yaml

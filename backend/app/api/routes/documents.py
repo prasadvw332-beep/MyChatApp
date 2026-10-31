@@ -4,14 +4,15 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 
+from app.clients import storage
 from app.core.audit import audit
 from app.core.config import MAX_UPLOAD_MB
 from app.core.errors import AppError, DependencyUnavailable, NotFound
 from app.rag import knowledge_base
 from app.rag.chunking import SUPPORTED
-from app.services import doc_store, storage
+from app.repositories import doc_store
+from app.schemas.documents import TagsIn
 
 router = APIRouter()
 
@@ -22,10 +23,6 @@ async def documents():
         return await asyncio.to_thread(knowledge_base.list_documents)
     except Exception as e:
         raise DependencyUnavailable("The document list") from e
-
-
-class TagsIn(BaseModel):
-    tags: list[str] = Field(max_length=20)
 
 
 @router.put("/documents/{doc_id}/tags")

@@ -1,0 +1,39 @@
+# Checks that run on `git commit`, on the staged files only. Install once: `make hooks`
+# (or `uvx pre-commit install`). Run on everything: `uvx pre-commit run --all-files`.
+# CI runs the same linters, so skipping a hook (--no-verify) only moves the failure to the PR.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: \.md$
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]  # Kubernetes files hold several objects
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.3
+    hooks:
+      - id: ruff-check
+        files: ^backend/
+        args: [--config=backend/pyproject.toml]
+
+  - repo: local
+    hooks:
+      - id: eslint
+        name: eslint (frontend)
+        entry: npm --prefix frontend run lint
+        language: system
+        files: ^frontend/.*\.js$
+        pass_filenames: false
+      - id: dashboard-generated
+        name: Grafana dashboard matches build_dashboard.py
+        entry: python deploy/observability/grafana/build_dashboard.py --check
+        language: system
+        files: ^deploy/observability/grafana/
+        pass_filenames: false

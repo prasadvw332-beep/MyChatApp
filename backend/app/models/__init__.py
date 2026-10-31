@@ -4,6 +4,7 @@
 from app.models.chat import Chat, Message
 from app.models.document import BatchStatus, DocStatus, Document, IngestBatch
 from app.models.evaluation import EvalRun
+from app.models.usage import LlmUsage
 from app.models.user import User
 
-__all__ = ["BatchStatus", "Chat", "DocStatus", "Document", "EvalRun", "IngestBatch", "Message", "User"]
+__all__ = ["BatchStatus", "Chat", "DocStatus", "Document", "EvalRun", "IngestBatch", "LlmUsage", "Message", "User"]

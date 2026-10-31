@@ -1,0 +1,46 @@
+# The frontend is just nginx serving static files, so it is small and stateless:
+# easy to run several copies of.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: mychatapp
+  labels:
+    app: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: mychatapp-frontend:1.0    # docker build -t mychatapp-frontend:1.0 ./frontend
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          env:
+            # nginx's resolver doesn't use the pod's DNS search list, so the short name "backend"
+            # wouldn't resolve: give it the Service's full name (frontend/nginx.conf.template)
+            - name: BACKEND_HOST
+              value: backend.mychatapp.svc.cluster.local
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 20

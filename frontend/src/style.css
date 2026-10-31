@@ -279,6 +279,14 @@ header { height: 56px; flex: none; display: flex; align-items: center; gap: 4px;
 .src svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
 a.src:hover { border-color: var(--border-strong); background: var(--hover); color: var(--text); }
 
+/* agent tool steps */
+.steps { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.step { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.step svg { flex: none; }
+.step .spinner { width: 9px; height: 9px; }
+.step-arg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.step.failed, .step.failed .step-arg { color: var(--danger); }
+
 /* edit mode */
 .edit-box { width: min(640px, 100%); background: var(--user-bubble); border-radius: 18px; padding: 12px 14px 10px; }
 .edit-input { width: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--text); font: inherit; }
@@ -364,6 +372,13 @@ a.src:hover { border-color: var(--border-strong); background: var(--hover); colo
 }
 #input::placeholder { color: var(--muted); }
 .composer-bar { display: flex; align-items: center; gap: 4px; margin-top: 4px; margin-left: -6px; }
+.mode-btn {
+  height: 32px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 999px; background: transparent;
+  color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; transition: .15s;
+}
+.mode-btn:hover { background: var(--hover); color: var(--text); }
+.mode-btn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 #send {
   width: 34px; height: 34px; flex: none; border: 0; border-radius: 50%;
   display: grid; place-items: center; cursor: pointer;

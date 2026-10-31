@@ -5,9 +5,9 @@ import re
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
 
 from app.core.audit import audit
+from app.schemas.evals import RunRequest
 from evals import run_ragas
 
 router = APIRouter(prefix="/evals")
@@ -15,11 +15,6 @@ router = APIRouter(prefix="/evals")
 # one run at a time; a full run takes several minutes with a 7B judge
 _status: dict = {"running": False}
 _task: asyncio.Task | None = None
-
-
-class RunRequest(BaseModel):
-    metrics: list[str] = Field(default_factory=lambda: list(run_ragas.DEFAULT_METRICS))
-    limit: int | None = Field(default=None, ge=1)
 
 
 @router.get("")

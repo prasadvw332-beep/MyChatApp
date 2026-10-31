@@ -3,11 +3,12 @@
 import asyncio
 
 from fastapi import Depends, HTTPException, Request
+from opentelemetry import trace
 
 from app.core.logging import set_user_id
 from app.core.security import COOKIE, user_id_from_token
 from app.models import User
-from app.services import user_store
+from app.repositories import user_store
 
 
 async def current_user(request: Request) -> User:
@@ -16,6 +17,7 @@ async def current_user(request: Request) -> User:
     user_id = user_id_from_token(request.cookies.get(COOKIE))
     if user_id is not None and (user := await asyncio.to_thread(user_store.by_id, user_id)):
         set_user_id(user.id)
+        trace.get_current_span().set_attribute("enduser.id", user.id)  # "show me user 9's slow requests"
         return user
     raise HTTPException(401, "Not logged in.")
 

@@ -8,6 +8,9 @@ Once the request is authenticated, the user id is added too ("everything user 9 
 Production logs one JSON object per line (what log collectors such as CloudWatch, Loki or
 Elasticsearch parse); development logs readable text.
 
+When tracing is on (core/telemetry.py), each line also carries the trace and span id, so a log
+line leads to its trace in Grafana (Tempo) and back.
+
 Structured fields go in `extra={"fields": {...}}`. Any field whose name looks like a secret
 (password, token, secret, authorization, cookie) is replaced with "***" before it is written.
 """
@@ -17,6 +20,8 @@ import logging
 import re
 import sys
 from contextvars import ContextVar
+
+from opentelemetry import trace
 
 from app.core.config import IS_PRODUCTION, LOG_LEVEL
 
@@ -54,6 +59,10 @@ class _ContextFilter(logging.Filter):
         uid = _user_id.get()
         record.user_id = uid
         record.user = f" u={uid}" if uid is not None else ""
+        ctx = trace.get_current_span().get_span_context()
+        record.trace_id = format(ctx.trace_id, "032x") if ctx.is_valid else None
+        record.span_id = format(ctx.span_id, "016x") if ctx.is_valid else None
+        record.trace = f" t={record.trace_id[:8]}" if ctx.is_valid else ""
         if hasattr(record, "fields"):
             record.fields = redact(record.fields)
         return True
@@ -70,6 +79,8 @@ class _JsonFormatter(logging.Formatter):
         }
         if getattr(record, "user_id", None) is not None:
             entry["user_id"] = record.user_id
+        if getattr(record, "trace_id", None):
+            entry["trace_id"], entry["span_id"] = record.trace_id, record.span_id
         entry.update(getattr(record, "fields", {}))
         if record.exc_info:
             entry["exception"] = self.formatException(record.exc_info)
@@ -81,7 +92,7 @@ def setup_logging() -> None:
     handler.addFilter(_ContextFilter())
     handler.setFormatter(
         _JsonFormatter() if IS_PRODUCTION
-        else logging.Formatter("%(asctime)s %(levelname)s [%(request_id)s%(user)s] %(name)s: %(message)s")
+        else logging.Formatter("%(asctime)s %(levelname)s [%(request_id)s%(user)s%(trace)s] %(name)s: %(message)s")
     )
     root = logging.getLogger()
     root.handlers[:] = [handler]

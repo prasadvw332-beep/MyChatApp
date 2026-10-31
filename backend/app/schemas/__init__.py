@@ -1,1 +1,1 @@
-"""Request/response models shared between modules (ones used by a single route live in that route)."""
+"""Request and response bodies (Pydantic), one module per API area, so the API contract can be read in one place."""

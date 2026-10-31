@@ -5,6 +5,9 @@ import re
 import time
 import uuid
 
+from opentelemetry import trace
+
+from app.core import metrics
 from app.core.errors import unhandled
 from app.core.logging import set_request_id, set_user_id
 
@@ -24,6 +27,7 @@ class RequestContextMiddleware:
         incoming = dict(scope["headers"]).get(b"x-request-id", b"").decode("latin-1")
         rid = incoming if _SAFE_ID.fullmatch(incoming) else uuid.uuid4().hex
         tokens = [set_request_id(rid), set_user_id(None)]  # the user id is filled in by deps.current_user
+        trace.get_current_span().set_attribute("request_id", rid)  # the request's span, when tracing is on
         client_ip = (scope.get("client") or ("-",))[0]
         started = time.perf_counter()
         status, response_started = 500, False
@@ -42,7 +46,12 @@ class RequestContextMiddleware:
                 raise
             await unhandled(e)(scope, receive, send_with_id)
         finally:
-            ms = round((time.perf_counter() - started) * 1000, 1)
+            seconds = time.perf_counter() - started
+            ms = round(seconds * 1000, 1)
+            # the route template (/chats/{chat_id}), not the path: one series per route, not per chat
+            route = getattr(scope.get("route"), "path", "unmatched")
+            metrics.http_requests.labels(scope["method"], route, str(status)).inc()
+            metrics.http_duration.labels(scope["method"], route).observe(seconds)
             access_log.info(
                 "%s %s %s %.1fms", scope["method"], scope["path"], status, ms,
                 extra={"fields": {"method": scope["method"], "path": scope["path"], "status": status,

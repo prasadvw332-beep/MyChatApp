@@ -1,12 +1,15 @@
 """In-memory stand-ins for the backing services, so tests need no Docker, Postgres or Ollama.
 
-FakeVectorStore implements the VectorStore protocol; the other two replace the module-level
-functions of doc_store and storage that knowledge_base calls.
+FakeVectorStore implements the VectorStore protocol; FakeDocStore and FakeStorage replace the
+module-level functions of doc_store and storage that knowledge_base calls; ScriptedModel plays
+the chat model.
 """
 
+import json
 from types import SimpleNamespace
 
 from langchain_core.documents import Document
+from langchain_core.messages import AIMessageChunk
 
 
 class FakeVectorStore:
@@ -76,3 +79,29 @@ class FakeStorage:
 
     def delete(self, doc_id):
         self.files.pop(doc_id, None)
+
+
+class ScriptedModel:
+    """Plays back one reply per model call; a reply is answer text or a list of (tool, args) calls."""
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.calls: list[dict] = []  # what each call saw: {"tools": bool, "messages": [...]}
+        self._tools = False
+
+    def bind_tools(self, tools):
+        bound = ScriptedModel()
+        bound.replies, bound.calls, bound._tools = self.replies, self.calls, True  # shared script
+        return bound
+
+    async def astream(self, messages):
+        self.calls.append({"tools": self._tools, "messages": list(messages)})
+        reply = self.replies.pop(0)
+        if isinstance(reply, str):
+            for word in reply.split(" "):
+                yield AIMessageChunk(content=word + " ")
+        else:
+            yield AIMessageChunk(content="", tool_call_chunks=[
+                {"name": name, "args": json.dumps(args), "id": f"call{i}", "index": i}
+                for i, (name, args) in enumerate(reply)
+            ])

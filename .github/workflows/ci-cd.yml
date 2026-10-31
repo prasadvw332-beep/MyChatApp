@@ -43,12 +43,34 @@ jobs:
       - name: Unit tests
         # --no-dev skips ragas (heavy, evals only); --group test adds pytest
         run: uv run --frozen --no-dev --group test pytest -q
+      - name: Grafana dashboard is generated from build_dashboard.py
+        # someone edited the JSON by hand, or changed the script without regenerating
+        run: python ../deploy/observability/grafana/build_dashboard.py --check
+
+  # Frontend: lint + tests (helpers, and a smoke test that boots the app in jsdom with a fake backend)
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test
 
   # ---------------------------------------------------------------------------
   # Job 1: build both images, and push them (only on main, not for pull requests)
   # ---------------------------------------------------------------------------
   build:
-    needs: test
+    needs: [test, frontend-test]   # nothing is built unless backend and frontend checks pass
     runs-on: ubuntu-latest
 
     # The automatic GITHUB_TOKEN may read the code and write packages (images) to ghcr.io
@@ -124,7 +146,7 @@ jobs:
       - name: Connect kubectl to the cluster
         run: aws eks update-kubeconfig --name mychatapp-cluster --region ap-south-1
 
-      # Real secrets come from GitHub Secrets, NOT from deploy/k8s/secret.yaml in the repo.
+      # Real secrets come from GitHub Secrets, NOT from deploy/k8s/overlays/dev/secret.yaml in the repo.
       # "--dry-run=client -o yaml | kubectl apply" = create the Secret, or update it if it exists.
       # Secrets are passed as env variables (not pasted into the script), so special
       # characters in a password can't break or inject shell commands. GitHub also
@@ -136,6 +158,7 @@ jobs:
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           kubectl create namespace mychatapp --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret generic backend-secrets -n mychatapp \
@@ -147,16 +170,16 @@ jobs:
             --from-literal=MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY" \
             --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic grafana-secrets -n mychatapp \
+            --from-literal=GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      # Point the manifests at the images we just pushed (instead of the local
-      # names like mychatapp-backend:1.0), and leave out the dev secret.yaml.
-      # This only changes the runner's copy of the files, not your repo.
+      # Point the prod overlay at the images we just pushed (instead of the local names like
+      # mychatapp-backend:1.0). Production settings and the missing dev Secret are already in
+      # the overlay (deploy/k8s/overlays/prod). This only changes the runner's copy of the files.
       - name: Set image tags
-        working-directory: deploy/k8s
+        working-directory: deploy/k8s/overlays/prod
         run: |
-          kustomize edit remove resource secret.yaml
-          # production mode: startup fails on weak settings; the cluster is served over https (ACM)
-          sed -i 's/APP_ENV: "development"/APP_ENV: "production"/; s/COOKIE_SECURE: "false"/COOKIE_SECURE: "true"/' configmap.yaml
           kustomize edit set image \
             mychatapp-backend=${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }} \
             mychatapp-frontend=${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
@@ -165,6 +188,6 @@ jobs:
       # If the rollout fails, the step fails and the Actions tab shows a red X.
       - name: Deploy
         run: |
-          kubectl apply -k deploy/k8s/
+          kubectl apply -k deploy/k8s/overlays/prod
           kubectl rollout status deploy/backend -n mychatapp --timeout=5m
           kubectl rollout status deploy/frontend -n mychatapp --timeout=5m

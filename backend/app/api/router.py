@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser
-from app.api.routes import auth, chat, chats, documents, evals, health, ingest
+from app.api.routes import agent, auth, chat, chats, documents, evals, health, ingest
 
 api_router = APIRouter()
 
@@ -14,6 +14,7 @@ api_router.include_router(auth.router)
 # everything else needs a login (chats are additionally scoped to the user, see routes/chats.py)
 protected = [CurrentUser]
 api_router.include_router(chat.router, dependencies=protected)
+api_router.include_router(agent.router, dependencies=protected)
 api_router.include_router(chats.router, dependencies=protected)
 api_router.include_router(documents.router, dependencies=protected)
 api_router.include_router(evals.router, dependencies=protected)

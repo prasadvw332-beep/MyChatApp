@@ -3,31 +3,15 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
-from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser
 from app.core.audit import audit
 from app.core.errors import InvalidInput, NotFound
 from app.models import Chat, Message, User
-from app.services import chat_store
+from app.repositories import chat_store
+from app.schemas.chats import ChatIn
 
 router = APIRouter(prefix="/chats")
-
-
-class MessageIn(BaseModel):
-    role: str
-    content: str
-    ui: str | None = None
-    sources: list[dict] | None = None
-    at: int | None = None  # ms since epoch
-
-
-class ChatIn(BaseModel):
-    title: str = Field(max_length=500)
-    titleBy: str | None = None
-    titledAt: int | None = None
-    updatedAt: int  # ms since epoch
-    messages: list[MessageIn]
 
 
 def _ms(dt: datetime) -> int:

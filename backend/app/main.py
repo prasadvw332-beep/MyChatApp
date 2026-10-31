@@ -5,14 +5,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core import config, errors
+from app.core import config, errors, metrics, telemetry
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 
 setup_logging()
 config.validate()  # before anything connects: a misconfigured production pod should crash, loudly
 
-from app.api.router import api_router  # noqa: E402  (after logging/config, so imports log correctly)
+from app.agents import tools as agent_tools  # noqa: E402  (after logging/config, so imports log correctly)
+from app.api.router import api_router  # noqa: E402
 from app.core.db import init_db  # noqa: E402
 from app.rag import knowledge_base  # noqa: E402
 
@@ -20,7 +21,8 @@ log = logging.getLogger("app")
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(app: FastAPI):
+    metrics.start_server()
     try:
         init_db()
         added = await asyncio.to_thread(knowledge_base.sync_documents)
@@ -30,11 +32,16 @@ async def lifespan(_: FastAPI):
         if config.IS_PRODUCTION:
             raise  # Kubernetes restarts the pod with backoff until PostgreSQL is reachable
         log.exception("Startup tasks failed (is PostgreSQL running?); /health/ready will report it")
-    log.info("MyChatApp API started (env=%s)", config.APP_ENV)
-    yield
+    # MCP sessions for /agent/chat, open for the app's lifetime
+    async with agent_tools.connect() as tools:
+        app.state.agent_tools = tools
+        log.info("MyChatApp API started (env=%s, agent tools: %s)", config.APP_ENV, ", ".join(t.name for t in tools))
+        yield
+    telemetry.shutdown()
 
 
 app = FastAPI(title="MyChatApp API", lifespan=lifespan)
+telemetry.setup_tracing("mychatapp-backend", app)
 errors.register(app)
 # inside CORS (added first = inner), so even a crash's 500 carries CORS headers the browser can read
 app.add_middleware(RequestContextMiddleware)

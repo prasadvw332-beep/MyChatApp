@@ -1,7 +1,6 @@
 import re
 
 from fastapi import APIRouter, HTTPException, Request, Response
-from pydantic import BaseModel
 
 from app.api.deps import CurrentUser
 from app.core import security
@@ -9,16 +8,12 @@ from app.core.audit import audit
 from app.core.errors import Conflict, InvalidInput
 from app.core.logging import set_user_id
 from app.models import User
-from app.services import user_store
+from app.repositories import user_store
+from app.schemas.auth import Credentials
 
 router = APIRouter(prefix="/auth")
 
 USERNAME = re.compile(r"[a-z0-9_.-]{3,32}")
-
-
-class Credentials(BaseModel):
-    username: str
-    password: str
 
 
 def _public(user: User) -> dict:

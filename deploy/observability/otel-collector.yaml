@@ -1,0 +1,32 @@
+# OpenTelemetry Collector: receives spans from the backend and the workers, sends them to Tempo.
+#
+# Apps send to the collector, never to Tempo directly: changing where traces go (Grafana Cloud,
+# Jaeger, AWS X-Ray) is then an edit here, not a redeploy of every app.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318   # what OTEL_EXPORTER_OTLP_ENDPOINT points at
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # drop data instead of being OOM-killed when Tempo is slow or down
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 200
+  batch: {}
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true   # plain gRPC on the private network
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]

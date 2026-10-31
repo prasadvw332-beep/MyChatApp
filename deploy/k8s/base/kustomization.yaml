@@ -1,0 +1,20 @@
+# The app as it is in every environment. Not applied directly: apply an overlay, which adds
+# what differs per environment (secrets, production settings, image tags):
+#   kubectl apply -k deploy/k8s/overlays/dev     # laptop (Docker Desktop Kubernetes)
+#   kubectl apply -k deploy/k8s/overlays/prod    # the real cluster (CI does this)
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - postgres.yaml
+  - qdrant.yaml
+  - minio.yaml
+  - ollama.yaml
+  - backend-deployment.yaml
+  - backend-service.yaml
+  - worker-deployment.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  # Prometheus, Grafana, Tempo and the OpenTelemetry Collector (with their config files)
+  - ../../observability

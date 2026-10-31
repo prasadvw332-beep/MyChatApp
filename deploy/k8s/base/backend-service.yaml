@@ -1,0 +1,18 @@
+# Pods come and go and get a new IP each time. A Service gives them ONE stable
+# name + IP and load-balances across all pods matching its selector.
+#
+# type: ClusterIP (the default) = reachable only INSIDE the cluster. That's what we
+# want: the browser never calls the backend directly, the frontend's nginx does
+# (BACKEND_HOST in frontend/nginx.conf.template; "backend" is this name).
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: mychatapp
+spec:
+  type: ClusterIP
+  selector:
+    app: backend        # send traffic to pods with this label (see backend-deployment.yaml)
+  ports:
+    - port: 8000        # the port other pods use:  http://backend:8000
+      targetPort: 8000  # the port the container listens on

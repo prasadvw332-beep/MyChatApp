@@ -1,15 +1,18 @@
-"""RAG pipeline: chunk -> embed + store/search (services/vector_store.py), built on LangChain."""
+"""RAG pipeline: chunk -> embed + store/search (clients/vector_store.py), built on LangChain."""
 
 import uuid
 
 from langchain_core.documents import Document
 
+from app.clients import storage
+from app.clients.vector_store import VectorStore
+from app.clients.vector_store import store as default_store
+from app.core import metrics
 from app.core.config import MIN_SCORE
 from app.core.errors import Conflict
+from app.core.telemetry import span
 from app.rag.chunking import chunk
-from app.services import doc_store, storage
-from app.services.vector_store import VectorStore
-from app.services.vector_store import store as default_store
+from app.repositories import doc_store
 
 TOP_K = 5
 
@@ -113,9 +116,12 @@ def delete_document(doc_id: str) -> None:
 
 
 def retrieve(question: str, k: int = TOP_K) -> list[Document]:
-    hits = store.search(question, k=k)
+    with span("rag.retrieve", k=k) as s, metrics.retrieval_duration.time():
+        hits = store.search(question, k=k)
+        s.set_attribute("best_score", hits[0][1] if hits else 0.0)
     # gate on the best hit only: a per-chunk cutoff throws away relevant chunks
     # (e.g. the Education chunk for "university name") whose absolute score is modest
     if not hits or hits[0][1] < MIN_SCORE:
+        metrics.retrieval_no_context.inc()
         return []
     return [doc for doc, _ in hits]

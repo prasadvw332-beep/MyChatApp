@@ -7,12 +7,32 @@ APP_ENV = os.getenv("APP_ENV", "development").lower()
 IS_PRODUCTION = APP_ENV == "production"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+# Observability (app/core/metrics.py, app/core/telemetry.py)
+# Prometheus scrapes this port; it is separate from the API so nginx never exposes it. 0 = off.
+METRICS_PORT = int(os.getenv("METRICS_PORT", "9100"))
+# OTLP/HTTP endpoint of the OpenTelemetry Collector, e.g. http://otel-collector:4318. Empty = no tracing.
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "")  # default: chosen by the process (backend / worker)
+
 # Ollama
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "llama3.2:1b")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
 # a hung model server must not hold a request (and a worker) forever; generation on CPU is slow
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "300"))
+
+# Agent (app/agents/): the model must support tool calling. llama3.2:1b does, but often picks tools
+# badly; qwen2.5:7b or llama3.1:8b are much more reliable.
+AGENT_MODEL = os.getenv("AGENT_MODEL", CHAT_MODEL)
+AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "4"))  # tool rounds before it must answer
+# optional JSON file of extra MCP servers for the agent (see mcp_servers.example.json)
+MCP_SERVERS_FILE = os.getenv("MCP_SERVERS_FILE", "")
+
+# Token cost (app/services/usage.py): USD per 1 million tokens. Ollama itself costs nothing per token,
+# so the defaults are a small hosted model's list price: "what this traffic would cost on a paid API".
+# Set your provider's real prices when you switch; 0 and 0 = track tokens only.
+LLM_PRICE_INPUT_PER_MTOK = float(os.getenv("LLM_PRICE_INPUT_PER_MTOK", "0.15"))
+LLM_PRICE_OUTPUT_PER_MTOK = float(os.getenv("LLM_PRICE_OUTPUT_PER_MTOK", "0.60"))
 
 # Qdrant
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6335")

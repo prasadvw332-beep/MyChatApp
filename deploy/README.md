@@ -28,18 +28,21 @@
 |---|---|---|
 | `backend/Dockerfile` | — | Recipe for the backend **image** (Python + your code) |
 | `frontend/Dockerfile` | — | Multi-stage: Node builds the site, nginx serves it |
-| `frontend/nginx.conf` | — | nginx: static files + proxy `/api` → backend |
+| `frontend/nginx.conf.template` | — | nginx: static files + proxy `/api` → backend (re-resolves the backend every 10s) |
 | `deploy/docker-compose.yml` | — | Run everything on one machine with Docker only |
-| `k8s/namespace.yaml` | Namespace | A "folder" for all our objects |
-| `k8s/configmap.yaml` | ConfigMap | Non-secret settings → env variables |
-| `k8s/secret.yaml` | Secret | Passwords and keys → env variables |
-| `k8s/*-deployment.yaml` | Deployment | "Keep N copies of this container running" |
-| `k8s/*-service.yaml` | Service | Stable name + load balancing for those pods |
-| `k8s/worker-deployment.yaml` | Deployment | 3 ingestion workers (no Service: they pull work from the queue) |
-| `k8s/postgres.yaml` | StatefulSet + Service | Database with its own persistent disk |
-| `k8s/qdrant, minio, ollama.yaml` | PVC + Deployment + Service | Stateful helpers |
-| `k8s/ollama.yaml` (bottom) | Job | Downloads the models once, then exits |
-| `k8s/kustomization.yaml` | — | Lists all files so one command applies them |
+| `k8s/base/namespace.yaml` | Namespace | A "folder" for all our objects |
+| `k8s/base/configmap.yaml` | ConfigMap | Non-secret settings → env variables |
+| `k8s/overlays/dev/secret.yaml` | Secret | Passwords and keys → env variables |
+| `k8s/base/*-deployment.yaml` | Deployment | "Keep N copies of this container running" |
+| `k8s/base/*-service.yaml` | Service | Stable name + load balancing for those pods |
+| `k8s/base/worker-deployment.yaml` | Deployment | 3 ingestion workers (no Service: they pull work from the queue) |
+| `k8s/base/postgres.yaml` | StatefulSet + Service | Database with its own persistent disk |
+| `k8s/base/qdrant, minio, ollama.yaml` | PVC + Deployment + Service | Stateful helpers |
+| `k8s/base/ollama.yaml` (bottom) | Job | Downloads the models once, then exits |
+| `k8s/base/kustomization.yaml` | — | Lists the app's files (the same in every environment) |
+| `k8s/overlays/dev/` | — | base + dev Secret: what you apply on your laptop |
+| `k8s/overlays/prod/` | — | base + production settings (`production.yaml`), no Secret: what CI applies |
+| `observability/` | ConfigMaps + Deployments | Prometheus, Grafana, Tempo, OTel Collector (see [Observability](#observability-prometheus-opentelemetry-grafana)) |
 
 **Image vs container vs pod:** an *image* is the packaged app (a template). A *container* is a running image.
 A *pod* is Kubernetes' smallest unit: one (or a few) containers that share an IP.
@@ -66,7 +69,7 @@ docker build -t mychatapp-backend:1.0 ./backend
 docker build -t mychatapp-frontend:1.0 ./frontend
 
 # 2. Create everything
-kubectl apply -k deploy/k8s/
+kubectl apply -k deploy/k8s/overlays/dev
 
 # 3. Watch the pods start (Ctrl+C to stop watching)
 kubectl get pods -n mychatapp -w
@@ -103,11 +106,11 @@ kubectl delete namespace mychatapp                        # remove everything
 |---|---|
 | Docker Desktop Kubernetes | **EKS** (managed Kubernetes): `eksctl create cluster` |
 | `docker build -t mychatapp-backend:1.0` | push to **ECR**: `docker tag ... <account>.dkr.ecr.<region>.amazonaws.com/mychatapp-backend:1.0` + `docker push`, and use that name in `image:` |
-| `k8s/postgres.yaml` | **RDS for PostgreSQL**: delete the file, put the RDS address in `DATABASE_URL` |
+| `k8s/base/postgres.yaml` | **RDS for PostgreSQL**: delete the file, put the RDS address in `DATABASE_URL` |
 | `minio.yaml` | **S3**: same API, delete the file, give the backend an IAM role |
 | PVC disks | **EBS** volumes, created automatically by the EBS CSI driver |
 | Service `type: LoadBalancer` | an AWS **Load Balancer** with a public DNS name |
-| `k8s/secret.yaml` | **Secrets Manager** + External Secrets Operator |
+| `k8s/overlays/dev/secret.yaml` | **Secrets Manager** + External Secrets Operator |
 | Ollama on CPU | a **GPU node group** (e.g. g5.xlarge), or Amazon Bedrock instead |
 | http | an **Ingress** (AWS Load Balancer Controller) + **ACM** certificate for https; then set `COOKIE_SECURE: "true"` |
 
@@ -126,11 +129,12 @@ git push ──► GitHub Actions ──► build both images ──► push to 
 |---|---|
 | `docker build -t mychatapp-backend:1.0` | build on every push; tag = the git commit SHA |
 | image stays on your laptop | pushed to `ghcr.io/prasadvw332-beep/mychatapp-backend` (Packages on your GitHub profile) |
-| `deploy/k8s/secret.yaml` with dev passwords | GitHub **Secrets** → `kubectl create secret` (secret.yaml is skipped) |
+| `deploy/k8s/overlays/dev/secret.yaml` with dev passwords | GitHub **Secrets** → `kubectl create secret` (the prod overlay has no secret.yaml) |
 | `image: mychatapp-backend:1.0` | `kustomize edit set image` swaps in the ghcr.io image + SHA tag |
+| `kubectl apply -k deploy/k8s/overlays/dev` | `kubectl apply -k deploy/k8s/overlays/prod` (production settings) |
 | `kubectl rollout undo` | still works; or re-run the workflow of an older commit |
 
-The deployment YAML files stay the same. Only the image name and tag change, and CI does that at deploy time, so local `kubectl apply -k deploy/k8s/` keeps working.
+The deployment YAML files stay the same. What differs per environment lives in its overlay; the image name and tag are set by CI at deploy time (on its own copy), so local `kubectl apply -k deploy/k8s/overlays/dev` keeps working.
 
 To use a pushed image from your local cluster, make the package public (GitHub → your profile → Packages → package settings → Change visibility).
 Otherwise give Kubernetes a pull secret:
@@ -143,7 +147,58 @@ kubectl create secret docker-registry ghcr -n mychatapp \
 
 To turn on the deploy job (once you have a cluster), add these in GitHub → Settings → Secrets and variables → Actions:
 - Variable `DEPLOY_ENABLED` = `true`
-- Secrets `AWS_DEPLOY_ROLE_ARN`, `DATABASE_URL`, `JWT_SECRET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `POSTGRES_PASSWORD`
+- Secrets `AWS_DEPLOY_ROLE_ARN`, `DATABASE_URL`, `JWT_SECRET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`
+
+## Observability: Prometheus, OpenTelemetry, Grafana
+
+```
+ backend pods ─┬─ :9100/metrics ◄──── scraped every 15s ──── Prometheus ◄─┐
+ worker pods  ─┤                                                          ├── Grafana  (dashboards, Explore)
+               └─ spans (OTLP/HTTP :4318) ──► OTel Collector ──► Tempo ◄──┘
+```
+
+| Piece | What it answers | Where |
+|---|---|---|
+| **Prometheus** | *How much, how fast, how often?* Numbers over time: requests/s, p95 latency, errors, LLM time to first token, documents indexed/min | http://localhost:9090 |
+| **OpenTelemetry** | *What happened in this one request?* A trace per request (or per ingested document), with a span for every PostgreSQL query and every call to Ollama and Qdrant | the SDK in the backend ([app/core/telemetry.py](../backend/app/core/telemetry.py)) + the Collector |
+| **Tempo** | Stores the traces | queried through Grafana |
+| **Grafana** | Shows both: the **MyChatApp** dashboard, and Explore → Tempo for traces | http://localhost:3000 (anonymous viewer; `admin` / `GRAFANA_ADMIN_PASSWORD` to edit) |
+
+All metrics are defined in [app/core/metrics.py](../backend/app/core/metrics.py). They are served on port **9100**, not
+8000: nginx forwards all of `/api/*` to the backend, so a `/metrics` route there would be public.
+Tracing is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set (compose and the ConfigMap set it).
+
+Config files live in [observability/](observability/) and are shared: compose mounts them, Kubernetes turns them
+into ConfigMaps ([observability/kustomization.yaml](observability/kustomization.yaml)). Only Prometheus differs
+(`prometheus.yml` vs `prometheus-k8s.yml`), because the DNS names differ.
+
+**Tokens & cost** ([app/services/usage.py](../backend/app/services/usage.py)): every model call (chat answer, agent
+run, chat title) records the tokens Ollama reports, plus a cost estimate at `LLM_PRICE_INPUT_PER_MTOK` /
+`LLM_PRICE_OUTPUT_PER_MTOK` (USD per million tokens). Totals go to Prometheus. Per user, they go to the `llm_usage`
+table, which Grafana reads through its PostgreSQL data source. They're kept out of Prometheus because a user id
+label would mean one time series per user.
+
+On Kubernetes nothing is public; use port-forwarding:
+
+```bash
+kubectl port-forward svc/grafana 3000:3000 -n mychatapp
+kubectl port-forward svc/prometheus 9090:9090 -n mychatapp
+```
+
+### From a slow request to its cause
+
+1. The dashboard shows p95 latency of `/chat` going up.
+2. Its trace: Grafana → Explore → Tempo → search `{ name = "POST /chat" && duration > 5s }`. The span tree shows
+   whether the time went to `rag.retrieve` (embedding + Qdrant), the PostgreSQL queries, or the Ollama call.
+3. Its log lines: every log line written during a traced request carries the trace id
+   (`"trace_id": ...` in production JSON, `t=1a2b3c4d` in dev text). Search the logs for it
+   (`kubectl logs deploy/backend -n mychatapp | grep <trace id>`). And the other way around: the `request_id` from a
+   user's error message is a span attribute, so `{ span.request_id = "..." }` in Tempo finds the trace.
+
+The dashboard is generated: edit [build_dashboard.py](observability/grafana/build_dashboard.py), run
+`python deploy/observability/grafana/build_dashboard.py`, and commit both files, then restart Grafana. Don't edit
+[mychatapp.json](observability/grafana/dashboards/mychatapp.json) by hand: CI runs the script with `--check` and fails
+when the JSON no longer matches it. Changes made directly in the UI to the provisioned dashboard can't be saved.
 
 ## Notes
 

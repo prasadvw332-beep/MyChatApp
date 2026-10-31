@@ -8,10 +8,17 @@ dependencies = [
     "fastapi>=0.161.1",
     "httpx>=0.28.1",
     "langchain-core>=1.7.0",
+    "langchain-mcp-adapters>=0.3.2",
     "langchain-ollama>=1.1.0",
     "langchain-qdrant>=1.1.0",
     "langchain-text-splitters>=1.1.3",
+    "mcp>=1.30.0",
     "minio>=7.2.20",
+    "opentelemetry-exporter-otlp-proto-http>=1.45.2",
+    "opentelemetry-instrumentation-fastapi>=0.66b2",
+    "opentelemetry-instrumentation-httpx>=0.66b2",
+    "opentelemetry-sdk>=1.45.2",
+    "prometheus-client>=0.26.0",
     "psycopg[binary]>=3.2",
     "pwdlib[argon2]>=0.3.1",
     "pyjwt>=2.15.1",
@@ -48,3 +55,7 @@ target-version = "py314"
 # pyflakes + syntax errors + import order + common bug patterns (bugbear)
 select = ["E4", "E7", "E9", "F", "I", "B"]
 ignore = ["B008"]  # FastAPI's `user: User = CurrentUser` is the intended Depends() idiom
+
+[tool.ruff.lint.isort]
+# our own packages, so imports sort the same from backend/ (CI) and from the repo root (pre-commit)
+known-first-party = ["app", "evals", "tests"]
