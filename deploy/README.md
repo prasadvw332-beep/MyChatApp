@@ -192,8 +192,10 @@ kubectl port-forward svc/prometheus 9090:9090 -n mychatapp
    (`kubectl logs deploy/backend -n mychatapp | grep <trace id>`). And the other way around: the `request_id` from a
    user's error message is a span attribute, so `{ span.request_id = "..." }` in Tempo finds the trace.
 
-The dashboard lives in git: edit [mychatapp.json](observability/grafana/dashboards/mychatapp.json)
-(or save a copy in the UI, edit that, and export its JSON over this file), then restart Grafana. Changes made directly in the UI to the provisioned dashboard can't be saved.
+The dashboard is generated: edit [build_dashboard.py](observability/grafana/build_dashboard.py), run
+`python deploy/observability/grafana/build_dashboard.py`, and commit both files, then restart Grafana. Don't edit
+[mychatapp.json](observability/grafana/dashboards/mychatapp.json) by hand: CI runs the script with `--check` and fails
+when the JSON no longer matches it. Changes made directly in the UI to the provisioned dashboard can't be saved.
 
 ## Notes
 

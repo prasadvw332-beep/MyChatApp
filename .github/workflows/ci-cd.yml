@@ -43,6 +43,9 @@ jobs:
       - name: Unit tests
         # --no-dev skips ragas (heavy, evals only); --group test adds pytest
         run: uv run --frozen --no-dev --group test pytest -q
+      - name: Grafana dashboard is generated from build_dashboard.py
+        # someone edited the JSON by hand, or changed the script without regenerating
+        run: python ../deploy/observability/grafana/build_dashboard.py --check
 
   # ---------------------------------------------------------------------------
   # Job 1: build both images, and push them (only on main, not for pull requests)
