@@ -6,6 +6,8 @@ import os
 APP_ENV = os.getenv("APP_ENV", "development").lower()
 IS_PRODUCTION = APP_ENV == "production"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+# json: one object per line, for Loki (docker compose and Kubernetes set it); text: readable in a terminal
+LOG_FORMAT = os.getenv("LOG_FORMAT", "json" if IS_PRODUCTION else "text").lower()
 
 # Observability (app/core/metrics.py, app/core/telemetry.py)
 # Prometheus scrapes this port; it is separate from the API so nginx never exposes it. 0 = off.

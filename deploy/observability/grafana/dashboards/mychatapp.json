@@ -31,6 +31,17 @@
   "templating": {
     "list": [
       {
+        "name": "search",
+        "label": "Find in logs",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "Request id, trace id or any text (Logs section)"
+      },
+      {
         "name": "route",
         "label": "Route",
         "type": "query",
@@ -112,6 +123,12 @@
       "url": "/explore?schemaVersion=1&panes={\"a\":{\"datasource\":\"tempo\",\"queries\":[{\"refId\":\"A\",\"datasource\":{\"type\":\"tempo\",\"uid\":\"tempo\"},\"queryType\":\"traceql\",\"query\":\"{resource.service.name=~\\\"mychatapp-.*\\\"}\",\"tableType\":\"traces\",\"limit\":20}],\"range\":{\"from\":\"now-1h\",\"to\":\"now\"}}}"
     },
     {
+      "title": "Explore logs",
+      "type": "link",
+      "icon": "external link",
+      "url": "/a/grafana-lokiexplore-app/explore"
+    },
+    {
       "title": "Prometheus alerts",
       "type": "link",
       "icon": "bolt",
@@ -146,14 +163,14 @@
       "id": 2,
       "transparent": true,
       "gridPos": {
-        "h": 11,
+        "h": 12,
         "w": 24,
         "x": 0,
         "y": 1
       },
       "options": {
         "mode": "markdown",
-        "content": "**Read top to bottom: each section answers the next question an on-call engineer would ask.** Colours mean the same everywhere: **green** = healthy, **orange** = getting worse, **red** = act now. Every other colour just tells series apart. Hover the **(i)** on any panel for what it means.\n\n| Section | The question it answers | Look at first | Healthy looks like |\n|---|---|---|---|\n| **Service status** | Is anything broken *right now*? | Alarm tiles, the live map, component lanes | No alarms, every box and lane green |\n| **Golden signals** | How is the app doing in this time range? | Server errors, API latency, Full answer | 0 errors, API under 0.5 s |\n| **SLOs & error budget** | Are we keeping our promises to users? | The four dials | Dials in green, burn rate under 1\u00d7 |\n| **Traffic & errors** | Which endpoint is slow or failing? | Errors by route, Slowest routes | Only blue 401s, no red 5xx |\n| **AI pipeline** | Where does an answer's time go? | Time per step, First word heatmap | Most time in *ollama /api/chat*, first word under 3 s |\n| **Caching \u00b7 Tokens & cost \u00b7 Guardrails** | What does the AI cost, and is it being attacked? | Cost per answer, Poisoned chunks | Poisoned chunks = 0 |\n| **Ingestion \u00b7 Data stores** | Are uploads processed, and are the databases OK? | Ingest backlog, Connections used | Backlog near 0, connections under 70% |\n| **Traces** | What happened inside one slow request? | Click a Trace ID | The longest bar is where the time went |\n\n**Something red?** Check *Active alerts* \u2192 find the matching red band on the graphs \u2192 click **Open slow traces** on a latency panel. **Everything empty?** Nobody is using the app: start the synthetic users (`--profile demo up -d --no-deps loadgen`, see docs/observability.md)."
+        "content": "**Read top to bottom: each section answers the next question an on-call engineer would ask.** Colours mean the same everywhere: **green** = healthy, **orange** = getting worse, **red** = act now. Every other colour just tells series apart. Hover the **(i)** on any panel for what it means.\n\n| Section | The question it answers | Look at first | Healthy looks like |\n|---|---|---|---|\n| **Service status** | Is anything broken *right now*? | Alarm tiles, the live map, component lanes | No alarms, every box and lane green |\n| **Golden signals** | How is the app doing in this time range? | Server errors, API latency, Full answer | 0 errors, API under 0.5 s |\n| **SLOs & error budget** | Are we keeping our promises to users? | The four dials | Dials in green, burn rate under 1\u00d7 |\n| **Traffic & errors** | Which endpoint is slow or failing? | Errors by route, Slowest routes | Only blue 401s, no red 5xx |\n| **AI pipeline** | Where does an answer's time go? | Time per step, First word heatmap | Most time in *ollama /api/chat*, first word under 3 s |\n| **Caching \u00b7 Tokens & cost \u00b7 Guardrails** | What does the AI cost, and is it being attacked? | Cost per answer, Poisoned chunks | Poisoned chunks = 0 |\n| **Ingestion \u00b7 Data stores** | Are uploads processed, and are the databases OK? | Ingest backlog, Connections used | Backlog near 0, connections under 70% |\n| **Traces** | What happened inside one slow request? | Click a Trace ID | The longest bar is where the time went |\n| **Logs** | What exactly went wrong? | Errors & warnings by service, Recent errors | No red bars; *Find in logs* takes a request id |\n\n**Something red?** Check *Active alerts* \u2192 find the matching red band on the graphs \u2192 click **Open slow traces** on a latency panel. **Everything empty?** Nobody is using the app: start the synthetic users (`--profile demo up -d --no-deps loadgen`, see docs/observability.md)."
       }
     },
     {
@@ -165,7 +182,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 13
       },
       "panels": []
     },
@@ -182,7 +199,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 13
+        "y": 14
       },
       "targets": [
         {
@@ -260,7 +277,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 13
+        "y": 14
       },
       "targets": [
         {
@@ -338,7 +355,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 13
+        "y": 14
       },
       "targets": [
         {
@@ -410,7 +427,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 13
+        "y": 14
       },
       "targets": [
         {
@@ -482,7 +499,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 13
+        "y": 14
       },
       "targets": [
         {
@@ -554,7 +571,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 13
+        "y": 14
       },
       "targets": [
         {
@@ -626,7 +643,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 17
+        "y": 18
       },
       "targets": [
         {
@@ -3184,7 +3201,7 @@
         "h": 9,
         "w": 15,
         "x": 0,
-        "y": 29
+        "y": 30
       },
       "targets": [
         {
@@ -3281,6 +3298,17 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
+          "expr": "min(up{job=\"loki\"})",
+          "legendFormat": "Loki (logs)",
+          "range": true,
+          "instant": false
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
           "expr": "min(up{job=\"prometheus\"})",
           "legendFormat": "Prometheus",
           "range": true,
@@ -3356,7 +3384,7 @@
         "h": 9,
         "w": 9,
         "x": 15,
-        "y": 29
+        "y": 30
       },
       "targets": [
         {
@@ -3448,7 +3476,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 39
       },
       "panels": []
     },
@@ -3465,7 +3493,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 39
+        "y": 40
       },
       "targets": [
         {
@@ -3529,7 +3557,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 39
+        "y": 40
       },
       "targets": [
         {
@@ -3597,7 +3625,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 39
+        "y": 40
       },
       "targets": [
         {
@@ -3669,7 +3697,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 39
+        "y": 40
       },
       "targets": [
         {
@@ -3741,7 +3769,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 39
+        "y": 40
       },
       "targets": [
         {
@@ -3805,7 +3833,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 39
+        "y": 40
       },
       "targets": [
         {
@@ -3869,7 +3897,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 43
+        "y": 44
       },
       "targets": [
         {
@@ -3941,7 +3969,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 43
+        "y": 44
       },
       "targets": [
         {
@@ -4013,7 +4041,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 43
+        "y": 44
       },
       "targets": [
         {
@@ -4077,7 +4105,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 43
+        "y": 44
       },
       "targets": [
         {
@@ -4141,7 +4169,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 43
+        "y": 44
       },
       "targets": [
         {
@@ -4209,7 +4237,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 43
+        "y": 44
       },
       "targets": [
         {
@@ -4281,7 +4309,7 @@
         "h": 8,
         "w": 6,
         "x": 0,
-        "y": 47
+        "y": 48
       },
       "targets": [
         {
@@ -4407,7 +4435,7 @@
         "h": 8,
         "w": 6,
         "x": 6,
-        "y": 47
+        "y": 48
       },
       "targets": [
         {
@@ -4472,7 +4500,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 47
+        "y": 48
       },
       "targets": [
         {
@@ -4568,7 +4596,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 47
+        "y": 48
       },
       "targets": [
         {
@@ -4660,7 +4688,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 56
       },
       "panels": []
     },
@@ -4677,7 +4705,7 @@
         "h": 6,
         "w": 6,
         "x": 0,
-        "y": 56
+        "y": 57
       },
       "targets": [
         {
@@ -4749,7 +4777,7 @@
         "h": 6,
         "w": 6,
         "x": 6,
-        "y": 56
+        "y": 57
       },
       "targets": [
         {
@@ -4821,7 +4849,7 @@
         "h": 6,
         "w": 6,
         "x": 12,
-        "y": 56
+        "y": 57
       },
       "targets": [
         {
@@ -4893,7 +4921,7 @@
         "h": 6,
         "w": 6,
         "x": 18,
-        "y": 56
+        "y": 57
       },
       "targets": [
         {
@@ -4965,7 +4993,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 62
+        "y": 63
       },
       "targets": [
         {
@@ -5125,7 +5153,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 62
+        "y": 63
       },
       "targets": [
         {
@@ -5260,7 +5288,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 70
+        "y": 71
       },
       "panels": []
     },
@@ -5277,7 +5305,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 72
       },
       "targets": [
         {
@@ -5349,7 +5377,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 72
       },
       "targets": [
         {
@@ -5468,7 +5496,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 79
+        "y": 80
       },
       "targets": [
         {
@@ -5618,7 +5646,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 79
+        "y": 80
       },
       "targets": [
         {
@@ -5706,7 +5734,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 87
+        "y": 88
       },
       "interval": "1m",
       "targets": [
@@ -5775,7 +5803,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 96
       },
       "panels": []
     },
@@ -5792,7 +5820,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 96
+        "y": 97
       },
       "targets": [
         {
@@ -5880,7 +5908,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 96
+        "y": 97
       },
       "targets": [
         {
@@ -6001,7 +6029,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 105
+        "y": 106
       },
       "interval": "1m",
       "targets": [
@@ -6074,7 +6102,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 105
+        "y": 106
       },
       "interval": "1m",
       "targets": [
@@ -6147,7 +6175,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 113
+        "y": 114
       },
       "targets": [
         {
@@ -6251,7 +6279,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 113
+        "y": 114
       },
       "targets": [
         {
@@ -6399,7 +6427,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 113
+        "y": 114
       },
       "targets": [
         {
@@ -6471,7 +6499,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 121
+        "y": 122
       },
       "targets": [
         {
@@ -6556,7 +6584,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 128
+        "y": 129
       },
       "panels": []
     },
@@ -6573,7 +6601,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 129
+        "y": 130
       },
       "targets": [
         {
@@ -6637,7 +6665,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 129
+        "y": 130
       },
       "targets": [
         {
@@ -6701,7 +6729,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 129
+        "y": 130
       },
       "targets": [
         {
@@ -6765,7 +6793,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 129
+        "y": 130
       },
       "targets": [
         {
@@ -6833,7 +6861,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 133
+        "y": 134
       },
       "targets": [
         {
@@ -6937,7 +6965,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 133
+        "y": 134
       },
       "targets": [
         {
@@ -7052,7 +7080,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 141
+        "y": 142
       },
       "panels": []
     },
@@ -7069,7 +7097,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 142
+        "y": 143
       },
       "targets": [
         {
@@ -7133,7 +7161,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 142
+        "y": 143
       },
       "targets": [
         {
@@ -7197,7 +7225,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 142
+        "y": 143
       },
       "targets": [
         {
@@ -7261,7 +7289,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 142
+        "y": 143
       },
       "targets": [
         {
@@ -7333,7 +7361,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 142
+        "y": 143
       },
       "targets": [
         {
@@ -7397,7 +7425,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 142
+        "y": 143
       },
       "targets": [
         {
@@ -7469,7 +7497,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 146
+        "y": 147
       },
       "targets": [
         {
@@ -7573,7 +7601,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 146
+        "y": 147
       },
       "targets": [
         {
@@ -7645,7 +7673,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 146
+        "y": 147
       },
       "targets": [
         {
@@ -7728,7 +7756,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 154
+        "y": 155
       },
       "targets": [
         {
@@ -7815,7 +7843,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 163
+        "y": 164
       },
       "panels": []
     },
@@ -7832,7 +7860,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 164
+        "y": 165
       },
       "targets": [
         {
@@ -7896,7 +7924,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 164
+        "y": 165
       },
       "targets": [
         {
@@ -7960,7 +7988,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 164
+        "y": 165
       },
       "targets": [
         {
@@ -8028,7 +8056,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 164
+        "y": 165
       },
       "targets": [
         {
@@ -8096,7 +8124,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 168
+        "y": 169
       },
       "targets": [
         {
@@ -8181,7 +8209,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 175
+        "y": 176
       },
       "panels": []
     },
@@ -8198,7 +8226,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 176
+        "y": 177
       },
       "targets": [
         {
@@ -8262,7 +8290,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 176
+        "y": 177
       },
       "targets": [
         {
@@ -8326,7 +8354,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 176
+        "y": 177
       },
       "targets": [
         {
@@ -8394,7 +8422,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 176
+        "y": 177
       },
       "targets": [
         {
@@ -8466,7 +8494,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 176
+        "y": 177
       },
       "targets": [
         {
@@ -8534,7 +8562,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 176
+        "y": 177
       },
       "targets": [
         {
@@ -8606,7 +8634,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 180
+        "y": 181
       },
       "targets": [
         {
@@ -8725,7 +8753,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 180
+        "y": 181
       },
       "targets": [
         {
@@ -8854,7 +8882,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 180
+        "y": 181
       },
       "targets": [
         {
@@ -8926,7 +8954,7 @@
         "h": 8,
         "w": 14,
         "x": 0,
-        "y": 188
+        "y": 189
       },
       "targets": [
         {
@@ -9017,7 +9045,7 @@
         "h": 8,
         "w": 10,
         "x": 14,
-        "y": 188
+        "y": 189
       },
       "targets": [
         {
@@ -9055,7 +9083,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 196
+        "y": 197
       },
       "panels": []
     },
@@ -9072,7 +9100,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 197
+        "y": 198
       },
       "targets": [
         {
@@ -9156,7 +9184,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 197
+        "y": 198
       },
       "targets": [
         {
@@ -9228,7 +9256,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 197
+        "y": 198
       },
       "targets": [
         {
@@ -9300,7 +9328,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 197
+        "y": 198
       },
       "targets": [
         {
@@ -9364,7 +9392,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 197
+        "y": 198
       },
       "targets": [
         {
@@ -9436,7 +9464,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 197
+        "y": 198
       },
       "targets": [
         {
@@ -9504,7 +9532,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 201
+        "y": 202
       },
       "targets": [
         {
@@ -9618,7 +9646,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 201
+        "y": 202
       },
       "targets": [
         {
@@ -9784,7 +9812,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 201
+        "y": 202
       },
       "targets": [
         {
@@ -9902,7 +9930,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 209
+        "y": 210
       },
       "targets": [
         {
@@ -9986,7 +10014,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 209
+        "y": 210
       },
       "targets": [
         {
@@ -10050,7 +10078,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 209
+        "y": 210
       },
       "targets": [
         {
@@ -10122,7 +10150,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 209
+        "y": 210
       },
       "targets": [
         {
@@ -10190,7 +10218,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 209
+        "y": 210
       },
       "targets": [
         {
@@ -10254,7 +10282,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 209
+        "y": 210
       },
       "targets": [
         {
@@ -10318,7 +10346,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 213
+        "y": 214
       },
       "targets": [
         {
@@ -10390,7 +10418,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 213
+        "y": 214
       },
       "targets": [
         {
@@ -10462,7 +10490,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 221
+        "y": 222
       },
       "targets": [
         {
@@ -10546,7 +10574,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 221
+        "y": 222
       },
       "targets": [
         {
@@ -10610,7 +10638,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 221
+        "y": 222
       },
       "targets": [
         {
@@ -10674,7 +10702,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 221
+        "y": 222
       },
       "targets": [
         {
@@ -10746,7 +10774,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 221
+        "y": 222
       },
       "targets": [
         {
@@ -10814,7 +10842,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 221
+        "y": 222
       },
       "targets": [
         {
@@ -10882,7 +10910,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 225
+        "y": 226
       },
       "targets": [
         {
@@ -10996,7 +11024,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 225
+        "y": 226
       },
       "targets": [
         {
@@ -11068,7 +11096,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 225
+        "y": 226
       },
       "targets": [
         {
@@ -11136,7 +11164,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 233
+        "y": 234
       },
       "panels": []
     },
@@ -11153,7 +11181,7 @@
         "h": 12,
         "w": 10,
         "x": 0,
-        "y": 234
+        "y": 235
       },
       "targets": [
         {
@@ -11180,7 +11208,7 @@
         "h": 12,
         "w": 14,
         "x": 10,
-        "y": 234
+        "y": 235
       },
       "targets": [
         {
@@ -11253,20 +11281,280 @@
     },
     {
       "type": "row",
-      "title": "Telemetry pipeline  \u00b7  is the monitoring itself healthy?",
+      "title": "Logs  \u00b7  what exactly went wrong",
       "id": 118,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 247
+      },
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "Errors & warnings by service",
+      "id": 119,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Log lines at WARNING or above per minute, from the backend and workers. A red bar is a good place to start: the lines themselves are on the right.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 248
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (service, level) (count_over_time({service=~\"backend|worker\", level=~\"WARNING|ERROR|CRITICAL\"}[1m]))",
+          "legendFormat": "{{service}} {{level}}",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "No data in this time range",
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 70,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth",
+            "barAlignment": 0,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*(ERROR|CRITICAL)"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*WARNING"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "sum"
+          ],
+          "sortBy": "Sum",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "type": "logs",
+      "title": "Recent errors",
+      "id": 120,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Newest first. Expand a line for its fields; 'Open trace in Tempo' shows the request it belongs to.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 248
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service=~\"backend|worker\", level=~\"ERROR|CRITICAL\"}",
+          "legendFormat": "",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "showLabels": false
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Log volume by service",
+      "id": 121,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Lines per minute from every container, ours and the dependencies. A sudden wall = something is retrying or crash-looping.",
+      "gridPos": {
+        "h": 10,
+        "w": 8,
+        "x": 0,
+        "y": 256
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "sum by (service) (count_over_time({service=~\".+\"}[1m]))",
+          "legendFormat": "{{service}}",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "No data in this time range",
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 70,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth",
+            "barAlignment": 0,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "sum"
+          ],
+          "sortBy": "Sum",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "interval": "1m"
+    },
+    {
+      "type": "logs",
+      "title": "Find in logs  \u00b7  type a request id, trace id or any text in 'Find in logs' at the top",
+      "id": 122,
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Every backend and worker line containing the text. A request id comes from the X-Request-ID header, an error message, or the feedback table; it finds everything that happened during that request.",
+      "gridPos": {
+        "h": 10,
+        "w": 16,
+        "x": 8,
+        "y": 256
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{service=~\"backend|worker\"} |= \"$search\"",
+          "legendFormat": "",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "showLabels": false
+      }
+    },
+    {
+      "type": "row",
+      "title": "Telemetry pipeline  \u00b7  is the monitoring itself healthy?",
+      "id": 123,
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 246
+        "y": 266
       },
       "panels": [
         {
           "type": "timeseries",
           "title": "Spans / s through the collector",
-          "id": 119,
+          "id": 124,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11276,7 +11564,7 @@
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 247
+            "y": 267
           },
           "targets": [
             {
@@ -11428,7 +11716,7 @@
         {
           "type": "timeseries",
           "title": "Prometheus active series",
-          "id": 120,
+          "id": 125,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11438,7 +11726,7 @@
             "h": 8,
             "w": 6,
             "x": 12,
-            "y": 247
+            "y": 267
           },
           "targets": [
             {
@@ -11500,7 +11788,7 @@
         {
           "type": "timeseries",
           "title": "Scrape duration by target",
-          "id": 121,
+          "id": 126,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11510,7 +11798,7 @@
             "h": 8,
             "w": 6,
             "x": 18,
-            "y": 247
+            "y": 267
           },
           "targets": [
             {
@@ -11569,9 +11857,160 @@
           }
         },
         {
+          "type": "timeseries",
+          "title": "Log lines / s through Alloy and Loki",
+          "id": 127,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Sent and received should match. Anything red means lines are missing from the Logs section.",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 275
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(loki_write_sent_entries_total[$__rate_interval]))",
+              "legendFormat": "sent by Alloy",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "B",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(loki_distributor_lines_received_total[$__rate_interval]))",
+              "legendFormat": "received by Loki",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "C",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(loki_write_dropped_entries_total[$__rate_interval]))",
+              "legendFormat": "dropped by Alloy",
+              "range": true,
+              "instant": false
+            },
+            {
+              "refId": "D",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(rate(loki_discarded_samples_total[$__rate_interval]))",
+              "legendFormat": "discarded by Loki (rate limit)",
+              "range": true,
+              "instant": false
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "noValue": "No data in this time range",
+              "min": 0,
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 22,
+                "gradientMode": "opacity",
+                "showPoints": "never",
+                "spanNulls": true,
+                "lineInterpolation": "smooth",
+                "barAlignment": 0,
+                "axisSoftMin": 0,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              }
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "sent.*"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "blue"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "received.*"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "green"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": "dropped.*|discarded.*"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "mode": "fixed",
+                      "fixedColor": "red"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "right",
+              "showLegend": true,
+              "calcs": [
+                "mean",
+                "max"
+              ],
+              "sortBy": "Max",
+              "sortDesc": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          }
+        },
+        {
           "type": "table",
           "title": "Scrape targets",
-          "id": 122,
+          "id": 128,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11581,7 +12020,7 @@
             "h": 8,
             "w": 24,
             "x": 0,
-            "y": 255
+            "y": 283
           },
           "targets": [
             {
@@ -11688,19 +12127,19 @@
     {
       "type": "row",
       "title": "Pods & resources",
-      "id": 123,
+      "id": 129,
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 263
+        "y": 291
       },
       "panels": [
         {
           "type": "timeseries",
           "title": "Memory by component",
-          "id": 124,
+          "id": 130,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11710,7 +12149,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 264
+            "y": 292
           },
           "targets": [
             {
@@ -11763,7 +12202,7 @@
                 "type": "prometheus",
                 "uid": "prometheus"
               },
-              "expr": "process_resident_memory_bytes{job=~\"tempo|prometheus|grafana\"}",
+              "expr": "process_resident_memory_bytes{job=~\"tempo|loki|alloy|prometheus|grafana\"}",
               "legendFormat": "{{job}}",
               "range": true,
               "instant": false
@@ -11816,7 +12255,7 @@
         {
           "type": "timeseries",
           "title": "CPU per pod (cores)",
-          "id": 125,
+          "id": 131,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11826,7 +12265,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 264
+            "y": 292
           },
           "targets": [
             {
@@ -11888,7 +12327,7 @@
         {
           "type": "state-timeline",
           "title": "Pod up / down",
-          "id": 126,
+          "id": 132,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -11898,7 +12337,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 264
+            "y": 292
           },
           "targets": [
             {

@@ -8,6 +8,13 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Central logs**: every container's output in Loki (7 days), shipped by Grafana Alloy (Docker socket in
+  compose; Kubernetes API with a namespaced read-logs Role in a cluster). Backend and worker lines are parsed:
+  `level` label, `request_id` / `trace_id` / `user_id` as structured metadata. Grafana links log lines to their
+  trace and traces to their logs; a "Logs" dashboard section (errors per service, recent errors, log volume,
+  *Find in logs* by request id); Loki in the component lanes, the telemetry pipeline row and the
+  `TelemetryTargetDown` alert. New `LOG_FORMAT` setting (`json`/`text`); compose and Kubernetes log JSON.
+  `feature/central-logs`
 - **Infrastructure as code**: Terraform for the EKS cluster CI deploys to (`deploy/terraform`): VPC, managed
   node group, add-ons (EBS CSI, metrics-server), GitHub OIDC deploy role scoped to the `production`
   environment, S3 state with locking; default gp3 StorageClass in the prod overlay; `terraform fmt`/`validate`

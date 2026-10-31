@@ -17,7 +17,8 @@ Layout (top to bottom, most important first; the same order an on-call engineer 
   7. Document ingestion: throughput (Prometheus) and the queue itself (PostgreSQL)
   8. Data stores & model server: PostgreSQL, Qdrant, MinIO, Ollama
   9. Traces: service map + recent requests
-  10. Telemetry pipeline, Pods & resources (collapsed)
+  10. Logs (Loki): errors and warnings per service, the error lines themselves, search by request id
+  11. Telemetry pipeline, Pods & resources (collapsed)
 
 Colours: green/orange/red mean healthy/warning/broken and are used for nothing else. Series that are not a
 status (input vs output tokens, hit vs miss...) get blue/purple/green/orange fixed per series, never by rank.
@@ -30,6 +31,7 @@ from pathlib import Path
 OUT = Path(__file__).parent / "dashboards" / "mychatapp.json"
 PROM = {"type": "prometheus", "uid": "prometheus"}
 TEMPO = {"type": "tempo", "uid": "tempo"}
+LOKI = {"type": "loki", "uid": "loki"}
 PG = {"type": "grafana-postgresql-datasource", "uid": "postgres"}
 
 # app traffic only: health probes are frequent and fast and would flatten every number
@@ -64,6 +66,21 @@ def target(expr, legend="", instant=False, ref="A"):
     t = {"refId": ref, "datasource": PROM, "expr": expr, "legendFormat": legend or "__auto", "range": not instant,
          "instant": instant}
     return t
+
+
+def loki_target(expr, legend="", ref="A"):
+    return {"refId": ref, "datasource": LOKI, "expr": expr, "legendFormat": legend, "queryType": "range"}
+
+
+def logs(title, expr, x, w, h, desc=""):
+    """Log lines themselves, newest first; a line with a trace id links to Tempo (datasources.yaml)."""
+    panels.append({
+        "type": "logs", "title": title, "id": _id(), "datasource": LOKI, "description": desc,
+        "gridPos": {"h": h, "w": w, "x": x, "y": y},
+        "targets": [loki_target(expr)],
+        "options": {"showTime": True, "wrapLogMessage": True, "prettifyLogMessage": False, "enableLogDetails": True,
+                    "sortOrder": "Descending", "dedupStrategy": "none", "showLabels": False},
+    })
 
 
 def sql_target(sql, ref="A"):
@@ -366,10 +383,12 @@ GUIDE = [  # section, the question it answers, look at first, healthy looks like
     ("Ingestion · Data stores", "Are uploads processed, and are the databases OK?",
      "Ingest backlog, Connections used", "Backlog near 0, connections under 70%"),
     ("Traces", "What happened inside one slow request?", "Click a Trace ID", "The longest bar is where the time went"),
+    ("Logs", "What exactly went wrong?", "Errors & warnings by service, Recent errors",
+     "No red bars; *Find in logs* takes a request id"),
 ]
 panels.append({
     "type": "text", "title": "", "id": _id(), "transparent": True,
-    "gridPos": {"h": 11, "w": 24, "x": 0, "y": y},
+    "gridPos": {"h": 12, "w": 24, "x": 0, "y": y},
     "options": {"mode": "markdown", "content": "\n".join([
         "**Read top to bottom: each section answers the next question an on-call engineer would ask.** "
         "Colours mean the same everywhere: **green** = healthy, **orange** = getting worse, **red** = act now. "
@@ -384,7 +403,7 @@ panels.append({
         "synthetic users (`--profile demo up -d --no-deps loadgen`, see docs/observability.md).",
     ])},
 })
-y += 11
+y += 12
 
 # ======================================================================== 1. service status
 row("Service status  ·  right now")
@@ -504,6 +523,7 @@ updown("Component health", [
      "or vector(0)) == bool 0", "Ollama (no failed calls)"),
     ('min(up{job="otel-collector"})', "OTel Collector"),
     ('min(up{job="tempo"})', "Tempo (traces)"),
+    ('min(up{job="loki"})', "Loki (logs)"),
     ('min(up{job="prometheus"})', "Prometheus"),
 ], 0, 15, 9, desc="Red = down (or, for Ollama, which has no metrics endpoint: a model call failed in the last "
                   "5 min, seen in traces). 'Ingestion workers' turns red when ANY worker is down.")
@@ -957,7 +977,31 @@ panels.append({
 })
 y += 12
 
-# ======================================================================== 10. telemetry pipeline (collapsed)
+# ======================================================================== 10. logs
+# The third question after "that" (metrics) and "where" (traces): "why". Lines from Loki, shipped by Alloy.
+row("Logs  ·  what exactly went wrong")
+p = ts("Errors & warnings by service", [], "short", 0, w=12, bars=True, stack=True, legend_calcs=("sum",),
+       overrides=[color(".*(ERROR|CRITICAL)", "red"), color(".*WARNING", "orange")],
+       desc="Log lines at WARNING or above per minute, from the backend and workers. A red bar is a good place "
+            "to start: the lines themselves are on the right.")
+p["datasource"] = LOKI
+p["targets"] = [loki_target('sum by (service, level) (count_over_time({service=~"backend|worker", '
+                            'level=~"WARNING|ERROR|CRITICAL"}[1m]))', "{{service}} {{level}}")]
+logs("Recent errors", '{service=~"backend|worker", level=~"ERROR|CRITICAL"}', 12, 12, 8,
+     desc="Newest first. Expand a line for its fields; 'Open trace in Tempo' shows the request it belongs to.")
+y += 8
+p = ts("Log volume by service", [], "short", 0, w=8, h=10, bars=True, stack=True, legend_calcs=("sum",),
+       desc="Lines per minute from every container, ours and the dependencies. A sudden wall = something "
+            "is retrying or crash-looping.")
+p["datasource"] = LOKI
+p["targets"] = [loki_target('sum by (service) (count_over_time({service=~".+"}[1m]))', "{{service}}")]
+logs("Find in logs  ·  type a request id, trace id or any text in 'Find in logs' at the top",
+     '{service=~"backend|worker"} |= "$search"', 8, 16, 10,
+     desc="Every backend and worker line containing the text. A request id comes from the X-Request-ID header, "
+          "an error message, or the feedback table; it finds everything that happened during that request.")
+y += 10
+
+# ======================================================================== 11. telemetry pipeline (collapsed)
 tel = row("Telemetry pipeline  ·  is the monitoring itself healthy?", collapsed=True)
 ts("Spans / s through the collector", [
     ("sum(rate(otelcol_receiver_accepted_spans_total[$__rate_interval]))", "received from the apps"),
@@ -975,6 +1019,15 @@ ts("Prometheus active series", [("prometheus_tsdb_head_series", "series")], "sho
 ts("Scrape duration by target", [("max by (job) (scrape_duration_seconds)", "{{job}}")], "s", 18, w=6,
    into=tel["panels"], legend_calcs=("max",))
 y += 8
+ts("Log lines / s through Alloy and Loki", [
+    ("sum(rate(loki_write_sent_entries_total[$__rate_interval]))", "sent by Alloy"),
+    ("sum(rate(loki_distributor_lines_received_total[$__rate_interval]))", "received by Loki"),
+    ("sum(rate(loki_write_dropped_entries_total[$__rate_interval]))", "dropped by Alloy"),
+    ("sum(rate(loki_discarded_samples_total[$__rate_interval]))", "discarded by Loki (rate limit)"),
+], "short", 0, w=24, into=tel["panels"], overrides=[color("sent.*", "blue"), color("received.*", "green"),
+                                                     color("dropped.*|discarded.*", "red")],
+   desc="Sent and received should match. Anything red means lines are missing from the Logs section.")
+y += 8
 table("Scrape targets", 0, 24, 8, expr="up", into=tel["panels"],
       transformations=[{"id": "organize", "options": {
           "excludeByName": {"Time": True, "__name__": True},
@@ -983,14 +1036,14 @@ table("Scrape targets", 0, 24, 8, expr="up", into=tel["panels"],
                          ("thresholds", th("red", (1, "green"))), ("color", {"mode": "thresholds"}))])
 y += 8
 
-# ======================================================================== 11. resources (collapsed)
+# ======================================================================== 12. resources (collapsed)
 res = row("Pods & resources", collapsed=True)
 ts("Memory by component", [
     ('process_resident_memory_bytes{job=~"backend|worker"}', "{{job}} {{instance}}"),
     ('memory_resident_bytes{job="qdrant"}', "qdrant"),
     ("minio_node_process_resident_memory_bytes", "minio"),
     ("otelcol_process_memory_rss", "otel-collector"),
-    ('process_resident_memory_bytes{job=~"tempo|prometheus|grafana"}', "{{job}}"),
+    ('process_resident_memory_bytes{job=~"tempo|loki|alloy|prometheus|grafana"}', "{{job}}"),
 ], "bytes", 0, w=8, into=res["panels"], legend_calcs=("lastNotNull", "max"),
    desc="Resident memory. The Kubernetes limit for backend and worker pods is 1 GiB: near it, a pod is OOM-killed.")
 ts("CPU per pod (cores)", [('rate(process_cpu_seconds_total{job=~"backend|worker"}[$__rate_interval])',
@@ -1008,6 +1061,9 @@ dashboard = {
     "refresh": "10s", "time": {"from": "now-1h", "to": "now"}, "liveNow": True,
     "timepicker": {"refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]},
     "templating": {"list": [{
+        "name": "search", "label": "Find in logs", "type": "textbox", "query": "",
+        "current": {"text": "", "value": ""}, "description": "Request id, trace id or any text (Logs section)",
+    }, {
         "name": "route", "label": "Route", "type": "query", "datasource": PROM,
         "query": {"query": 'label_values(http_requests_total{route!~"/health.*"}, route)', "refId": "route"},
         "definition": 'label_values(http_requests_total{route!~"/health.*"}, route)',
@@ -1029,6 +1085,8 @@ dashboard = {
     "links": [
         {"title": "Explore traces", "type": "link", "icon": "external link", "url": TRACES_LINK[0]["url"]
          .replace(" && kind=server && duration > 2s", "")},
+        {"title": "Explore logs", "type": "link", "icon": "external link",
+         "url": "/a/grafana-lokiexplore-app/explore"},
         {"title": "Prometheus alerts", "type": "link", "icon": "bolt", "url": "http://localhost:9090/alerts",
          "targetBlank": True},
         {"title": "Prometheus targets", "type": "link", "icon": "external link", "url": "http://localhost:9090/targets",

@@ -1,10 +1,11 @@
-# The observability stack on Kubernetes: the same four services as in docker-compose.yml.
+# The observability stack on Kubernetes: the same services as in docker-compose.yml.
 # Applied together with the app by `kubectl apply -k deploy/k8s/overlays/<dev|prod>`
 # (deploy/k8s/base includes ../../observability).
 # The config files are turned into ConfigMaps by kustomization.yaml in this folder.
 #
 #   Grafana:     kubectl port-forward svc/grafana 3000:3000 -n mychatapp      -> http://localhost:3000
 #   Prometheus:  kubectl port-forward svc/prometheus 9090:9090 -n mychatapp   -> http://localhost:9090
+#   Alloy:       kubectl port-forward svc/alloy 12345:12345 -n mychatapp      -> http://localhost:12345
 #
 # None of them is exposed to the internet (all ClusterIP). On AWS you would put Grafana behind an
 # Ingress with login, or use the managed versions (Amazon Managed Prometheus / Managed Grafana).
@@ -158,6 +159,169 @@ spec:
       port: 3200
     - name: otlp-grpc
       port: 4317
+---
+# ---------- Loki (logs) ----------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: loki-data
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loki
+  namespace: mychatapp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+    spec:
+      securityContext:
+        fsGroup: 10001   # Loki runs as user 10001, like Tempo
+      containers:
+        - name: loki
+          image: grafana/loki:3.5.3
+          args: ["-config.file=/etc/loki/loki.yaml"]
+          ports:
+            - containerPort: 3100   # pushes from Alloy, queries from Grafana
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3100
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+            - name: storage
+              mountPath: /loki
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: loki-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: mychatapp
+spec:
+  selector:
+    app: loki
+  ports:
+    - name: http
+      port: 3100
+---
+# ---------- Alloy (ships every pod's logs to Loki) ----------
+# It reads logs through the Kubernetes API, so it needs permission to: list and watch the pods of this
+# namespace, and read their logs. A Role (not a ClusterRole): nothing outside mychatapp.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: mychatapp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: alloy-read-logs
+  namespace: mychatapp
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: alloy-read-logs
+  namespace: mychatapp
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: mychatapp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: alloy-read-logs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alloy
+  namespace: mychatapp
+spec:
+  replicas: 1   # one reader: two would send every line twice
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+    spec:
+      serviceAccountName: alloy
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.10.0
+          args:
+            - run
+            - --server.http.listen-addr=0.0.0.0:12345   # UI + /metrics
+            - --storage.path=/tmp/alloy
+            - /etc/alloy/config.alloy
+          ports:
+            - containerPort: 12345
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 12345
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: mychatapp
+spec:
+  selector:
+    app: alloy
+  ports:
+    - name: http
+      port: 12345
 ---
 # ---------- postgres-exporter: PostgreSQL's statistics views as Prometheus metrics ----------
 apiVersion: apps/v1

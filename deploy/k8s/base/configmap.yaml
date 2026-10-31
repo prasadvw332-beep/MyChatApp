@@ -38,4 +38,6 @@ data:
   COOKIE_SECURE: "false"   # set "true" once the site is served over https
   # traces go to the collector (deploy/observability/); metrics are scraped from port 9100
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+  # logs: JSON lines on stdout, shipped to Loki by Alloy (deploy/observability/alloy-k8s.alloy)
+  LOG_FORMAT: "json"
   METRICS_PORT: "9100"

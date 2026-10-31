@@ -16,6 +16,12 @@ configMapGenerator:
   - name: tempo-config
     files:
       - tempo.yaml
+  - name: loki-config
+    files:
+      - loki.yaml
+  - name: alloy-config
+    files:
+      - config.alloy=alloy-k8s.alloy
   - name: prometheus-config
     files:
       - prometheus.yml=prometheus-k8s.yml

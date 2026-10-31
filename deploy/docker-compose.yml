@@ -1,6 +1,7 @@
 # Run the whole app with ONE command (from the project root):
 #   docker compose -f deploy/docker-compose.yml up --build
 # Then open http://localhost:8080   (Grafana: http://localhost:3000, Prometheus: http://localhost:9090)
+# Logs of every container: Grafana -> Explore -> Loki, or Drilldown -> Logs
 #
 # Compose is the "small brother" of Kubernetes: it runs several containers on one
 # machine and connects them on a private network where each service name
@@ -33,6 +34,7 @@ services:
       JWT_SECRET: change-me-to-a-long-random-string
       # traces -> the collector (see "observability" below); metrics are scraped from port 9100
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      LOG_FORMAT: json   # one JSON object per line: Alloy reads the level and ids for Loki
       OTEL_SERVICE_NAME: mychatapp-backend
     depends_on:
       postgres:
@@ -60,6 +62,7 @@ services:
       MINIO_SECRET_KEY: minioadmin123
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       OTEL_SERVICE_NAME: mychatapp-worker
+      LOG_FORMAT: json
     stop_grace_period: 5m   # time to finish the current document on `docker compose down`
     depends_on:
       - backend             # the backend runs the database migrations at startup
@@ -135,6 +138,7 @@ services:
   # metrics: backend/worker :9100/metrics, postgres-exporter, qdrant, minio, the stack itself <- Prometheus -> Grafana
   # alerts:  observability/alerts.yml, evaluated by Prometheus (http://localhost:9090/alerts)
   # traces:  backend/worker --OTLP-->  otel-collector  -> Tempo       -> Grafana
+  # logs:    every container's stdout  -> Alloy (docker socket) -> Loki -> Grafana
   # Versions are pinned: a dashboard or config that works today keeps working after a rebuild.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.130.0
@@ -144,13 +148,14 @@ services:
     depends_on:
       - tempo
 
-  # Tempo runs as user 10001, but a new named volume belongs to root: hand it over once.
-  tempo-init:
+  # Tempo and Loki run as user 10001, but a new named volume belongs to root: hand them over once.
+  volume-init:
     image: &tempo-image grafana/tempo:2.8.1
     user: root
-    entrypoint: ["chown", "-R", "10001:10001", "/var/tempo"]
+    entrypoint: ["chown", "-R", "10001:10001", "/var/tempo", "/loki"]
     volumes:
       - tempo-data:/var/tempo
+      - loki-data:/loki
     restart: "no"
 
   tempo:
@@ -160,8 +165,35 @@ services:
       - ./observability/tempo.yaml:/etc/tempo.yaml:ro
       - tempo-data:/var/tempo
     depends_on:
-      tempo-init:
+      volume-init:
         condition: service_completed_successfully
+
+  loki:
+    image: grafana/loki:3.5.3
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+
+  # Tails every compose container's output through the Docker socket (read-only) and pushes it to Loki.
+  # On Docker Desktop for Windows/Mac the socket path is the same: it is inside Docker's Linux VM.
+  alloy:
+    image: grafana/alloy:v1.10.0
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data",
+              "/etc/alloy/config.alloy"]
+    environment:
+      COMPOSE_PROJECT: ${COMPOSE_PROJECT_NAME}   # read only this project's containers (alloy-compose.alloy)
+    ports:
+      - "12345:12345"        # Alloy's UI: the pipeline graph and the health of each step
+    volumes:
+      - ./observability/alloy-compose.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data   # read positions: a restart resumes instead of re-sending
+    depends_on:
+      - loki
 
   # PostgreSQL has no /metrics of its own: this reads its statistics views and serves them on :9187
   postgres-exporter:
@@ -207,6 +239,7 @@ services:
     depends_on:
       - prometheus
       - tempo
+      - loki
 
 # Named volumes: managed by Docker, kept until you run `docker compose down -v`
 volumes:
@@ -215,5 +248,7 @@ volumes:
   minio-data:
   ollama-data:
   tempo-data:
+  loki-data:
+  alloy-data:
   prometheus-data:
   grafana-data:

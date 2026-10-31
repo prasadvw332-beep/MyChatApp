@@ -15,6 +15,7 @@ With `APP_ENV=production` the backend **refuses to start** when `JWT_SECRET` is 
 |---|---|---|
 | `APP_ENV` | `development` | `production`: startup checks above, JSON logs, no localhost CORS rule |
 | `LOG_LEVEL` | `INFO` | |
+| `LOG_FORMAT` | `json` in production, else `text` | `json`: one object per line, what Loki reads (compose and Kubernetes set it); `text`: readable in a terminal |
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | comma-separated; exact origins (cookies forbid `*`) |
 | `JWT_SECRET` | empty (random per start) | signs session cookies; set it, or every restart logs everyone out. **Secret** |
 | `SESSION_DAYS` | `7` | how long a login lasts |

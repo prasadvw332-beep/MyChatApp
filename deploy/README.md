@@ -42,7 +42,7 @@
 | `k8s/base/kustomization.yaml` | — | Lists the app's files (the same in every environment) |
 | `k8s/overlays/dev/` | — | base + dev Secret: what you apply on your laptop |
 | `k8s/overlays/prod/` | — | base + production settings (`production.yaml`), no Secret: what CI applies |
-| `observability/` | ConfigMaps + Deployments | Prometheus, Grafana, Tempo, OTel Collector (see [Observability](#observability-prometheus-opentelemetry-grafana)) |
+| `observability/` | ConfigMaps + Deployments | Prometheus, Grafana, Tempo, OTel Collector, Loki, Alloy (see [Observability](#observability-prometheus-opentelemetry-grafana)) |
 
 **Image vs container vs pod:** an *image* is the packaged app (a template). A *container* is a running image.
 A *pod* is Kubernetes' smallest unit: one (or a few) containers that share an IP.
@@ -181,8 +181,9 @@ To turn on the deploy job (once you have a cluster), add these in GitHub → Set
 ```
  backend pods ─┬─ :9100/metrics ◄──── scraped every 15s ──── Prometheus ◄─┐
  worker pods  ─┤                                                          ├── Grafana  (dashboards, Explore)
-               └─ spans (OTLP/HTTP :4318) ──► OTel Collector ──► Tempo ◄──┘
- postgres-exporter :9187, Qdrant :6333, MinIO :9000, Collector :8888, Tempo, Grafana ──► Prometheus (also scraped)
+               ├─ spans (OTLP/HTTP :4318) ──► OTel Collector ──► Tempo ◄──┤
+ every pod ────┴─ stdout ──────────────────► Alloy ──────────► Loki ◄───┘
+ postgres-exporter :9187, Qdrant :6333, MinIO :9000, Collector :8888, Tempo, Loki, Alloy, Grafana ──► Prometheus (also scraped)
 ```
 
 | Piece | What it answers | Where |
@@ -190,6 +191,8 @@ To turn on the deploy job (once you have a cluster), add these in GitHub → Set
 | **Prometheus** | *How much, how fast, how often?* Numbers over time: requests/s, p95 latency, errors, LLM time to first token, documents indexed/min | http://localhost:9090 |
 | **OpenTelemetry** | *What happened in this one request?* A trace per request (or per ingested document), with a span for every PostgreSQL query and every call to Ollama and Qdrant | the SDK in the backend ([app/core/telemetry.py](../backend/app/core/telemetry.py)) + the Collector |
 | **Tempo** | Stores the traces | queried through Grafana |
+| **Loki** | *What exactly went wrong?* Stores the logs of every container for 7 days, searchable by service, level, request id, trace id | queried through Grafana (Drilldown → Logs, Explore) |
+| **Grafana Alloy** | Ships the logs: reads every container's stdout, parses our JSON lines, pushes to Loki | http://localhost:12345 |
 | **Alert rules** | *Is anything broken right now?* SLO burn rate, components down, saturation, ingest failures ([observability/alerts.yml](observability/alerts.yml)) | http://localhost:9090/alerts |
 | **postgres-exporter** | PostgreSQL's connections, transactions, cache hit ratio, deadlocks as metrics | scraped on :9187 |
 | **Grafana** | Shows all of it: the **MyChatApp · Production overview** dashboard, and Explore → Tempo for traces | http://localhost:3000 (anonymous viewer; `admin` / `GRAFANA_ADMIN_PASSWORD` to edit) |
@@ -199,8 +202,10 @@ All metrics are defined in [app/core/metrics.py](../backend/app/core/metrics.py)
 Tracing is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set (compose and the ConfigMap set it).
 
 Config files live in [observability/](observability/) and are shared: compose mounts them, Kubernetes turns them
-into ConfigMaps ([observability/kustomization.yaml](observability/kustomization.yaml)). Only Prometheus differs
-(`prometheus.yml` vs `prometheus-k8s.yml`), because the DNS names differ.
+into ConfigMaps ([observability/kustomization.yaml](observability/kustomization.yaml)). Only Prometheus and Alloy differ
+(`prometheus.yml` vs `prometheus-k8s.yml`, `alloy-compose.alloy` vs `alloy-k8s.alloy`): DNS names differ, and Alloy
+finds containers through the Docker socket in compose but through the Kubernetes API in a cluster (with a Role that
+can only list pods and read their logs in `mychatapp`).
 
 **Tokens & cost** ([app/services/usage.py](../backend/app/services/usage.py)): every model call (chat answer, agent
 run, chat title) records the tokens Ollama reports, plus a cost estimate at `LLM_PRICE_INPUT_PER_MTOK` /
@@ -220,10 +225,11 @@ kubectl port-forward svc/prometheus 9090:9090 -n mychatapp
 1. The dashboard shows p95 latency of `/chat` going up.
 2. Its trace: Grafana → Explore → Tempo → search `{ name = "POST /chat" && duration > 5s }`. The span tree shows
    whether the time went to `rag.retrieve` (embedding + Qdrant), the PostgreSQL queries, or the Ollama call.
-3. Its log lines: every log line written during a traced request carries the trace id
-   (`"trace_id": ...` in production JSON, `t=1a2b3c4d` in dev text). Search the logs for it
-   (`kubectl logs deploy/backend -n mychatapp | grep <trace id>`). And the other way around: the `request_id` from a
-   user's error message is a span attribute, so `{ span.request_id = "..." }` in Tempo finds the trace.
+3. Its log lines: in the trace, click **Logs for this span**: Loki shows every line written during that
+   request, from the backend and the workers. The other way around: a log line's **Open trace in Tempo** button.
+   A `request_id` from a user's error message goes in the dashboard's *Find in logs* box, or
+   `{service=~"backend|worker"} | request_id="..."` in Explore → Loki; it is also a span attribute, so
+   `{ span.request_id = "..." }` in Tempo finds the trace.
 
 The dashboard is generated: edit [build_dashboard.py](observability/grafana/build_dashboard.py), run
 `python deploy/observability/grafana/build_dashboard.py`, and commit both files, then restart Grafana. Don't edit

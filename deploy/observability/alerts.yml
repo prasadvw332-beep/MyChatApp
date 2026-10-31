@@ -74,11 +74,11 @@ groups:
           summary: "{{ $labels.job }} is down: chat, login or uploads will fail"
 
       - alert: TelemetryTargetDown
-        expr: up{job=~"otel-collector|tempo|grafana"} == 0
+        expr: up{job=~"otel-collector|tempo|loki|alloy|grafana"} == 0
         for: 5m
         labels: { severity: warning }
         annotations:
-          summary: "{{ $labels.job }} is down: traces or dashboards are unavailable (the app itself is fine)"
+          summary: "{{ $labels.job }} is down: traces, logs or dashboards are unavailable (the app itself is fine)"
 
   - name: saturation
     rules:

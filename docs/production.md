@@ -7,7 +7,7 @@ What the backend does to be safe and debuggable in production. The settings invo
 | Configuration | `APP_ENV=production` refuses to start with dev passwords, a short `JWT_SECRET` or `COOKIE_SECURE=false`, and turns off the dev-only localhost CORS rule |
 | Errors | Every error is `{"detail", "code", "request_id"}`. Dependency failures return 503 with a generic message; the real exception is only in the logs |
 | Tracing | Each request gets an `X-Request-ID` (or keeps the caller's). It is in the response header, the error body and every log line of that request |
-| Logs | One JSON object per line in production (for CloudWatch/Loki/ELK), readable text in development |
+| Logs | One JSON object per line (`LOG_FORMAT=json`), readable text in local development. Every container's output is shipped to Loki by Grafana Alloy and kept 7 days; searchable by service, level, request id and trace id (see [observability.md](observability.md#logs)) |
 | Audit | `app.audit` logger: one event per security-relevant action (`auth.login.failure`, `document.delete`, ...) with user id, request id and client IP; see `app/core/audit.py`. Fields named like secrets are redacted |
 | Health | `/health` = liveness (process up, never checks dependencies). `/health/ready` = readiness: 503 only if PostgreSQL is down; Qdrant/MinIO/Ollama outages report `degraded` but keep the pod in rotation |
 | Timeouts | Ollama (`OLLAMA_TIMEOUT`, connect 5 s), Qdrant (`QDRANT_TIMEOUT`), MinIO (connect 5 s, read 60 s, 3 retries with backoff), PostgreSQL connect 5 s |

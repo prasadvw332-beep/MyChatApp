@@ -6,16 +6,17 @@ Three questions, three tools, one screen:
 |---|---|---|
 | **How much, how fast, how often?** (numbers over time) | **Prometheus** (metrics) | "p95 time to the first word went from 3 s to 12 s at 2 pm" |
 | **What happened inside this one request?** | **Tempo** (traces, sent by OpenTelemetry) | "this chat spent 16 s in Ollama and 0.004 s in Qdrant" |
-| **What exactly went wrong?** | **logs** (stdout, JSON in production) | "ConnectionError: Qdrant refused the connection" |
+| **What exactly went wrong?** | **Loki** (logs of every container, shipped by Grafana Alloy) | "ConnectionError: Qdrant refused the connection" |
 | *all of the above in one place* | **Grafana** | the *MyChatApp · Production overview* dashboard |
 
 The usual path: the **dashboard** shows *that* something is wrong, a **trace** shows *where*, the **logs** show *why*.
-They are linked: every log line carries the trace id (`t=1a2b3c4d` in development, `"trace_id"` in JSON).
+They are linked: every log line carries the trace id, and Grafana turns it into a button that opens the trace
+(and a trace's spans into a "Logs for this span" button).
 
 ```
  backend / workers ─┬─ :9100/metrics ◄── scraped every 15 s ── Prometheus ◄─┐
-                    │                                                        ├── Grafana
-                    └─ spans (OTLP) ──► OTel Collector ──► Tempo ◄───────────┘
+                    ├─ spans (OTLP) ──► OTel Collector ──► Tempo ◄───────────┼── Grafana
+ every container ───┴─ stdout ────────► Alloy ───────────► Loki ◄────────────┘
 ```
 
 How it is deployed (compose and Kubernetes): [deploy/README.md](../deploy/README.md#observability-prometheus-opentelemetry-grafana).
@@ -28,6 +29,8 @@ With `make up` (docker compose):
 |---|---|
 | Grafana dashboard | http://localhost:3000/d/mychatapp (anonymous view; `admin` / `GRAFANA_ADMIN_PASSWORD` to edit) |
 | Traces | Grafana → Explore → Tempo → Search, or click a Trace ID in the dashboard's "Recent requests" table |
+| Logs | the dashboard's **Logs** section, Grafana → Drilldown → Logs (no query needed), or Explore → Loki |
+| Alloy (log shipper) | http://localhost:12345 (pipeline graph; every step should be green) |
 | Prometheus | http://localhost:9090 (Status → Targets: backend + every worker should be UP) |
 
 ## The dashboard, top to bottom
@@ -51,8 +54,10 @@ The order follows the questions on-call asks: *is anything broken? → is it wit
 8. **Data stores & model server**: PostgreSQL (connections, cache hit ratio, transactions, long transactions),
    Qdrant (vectors, search latency, errors), MinIO (files, storage, free disk), Ollama (calls and latency, from traces).
 9. **Traces**: service map (who calls whom) and recent requests.
-10. **Telemetry pipeline** and **Pods & resources** (collapsed): spans dropped on the way to Tempo, Prometheus series,
-    scrape targets; memory, CPU, up/down per pod.
+10. **Logs**: errors and warnings per service, the latest error lines, log volume per container, and
+    *Find in logs*: type a request id (or trace id, or any text) in the box at the top of the dashboard.
+11. **Telemetry pipeline** and **Pods & resources** (collapsed): spans dropped on the way to Tempo, log lines
+    dropped on the way to Loki, Prometheus series, scrape targets; memory, CPU, up/down per pod.
 
 The top of the dashboard is a **live system map**: one box per component, tinted green (up) or red (down),
 with a live number inside and animated arrows in the direction requests flow. It refreshes every 10 s.
@@ -86,6 +91,40 @@ POST /chat ───────────────────────
  └─ ollama POST /api/chat ────────────────────────── 5.8 s to the first word, then streaming
 ```
 
+## Logs
+
+The apps only write to stdout ([backend/app/core/logging.py](../backend/app/core/logging.py)); they don't know Loki
+exists. **Grafana Alloy** reads the output of every container (through the Docker socket in compose, through the
+Kubernetes API in a cluster) and pushes it to **Loki**, which keeps it for 7 days. Configs:
+[loki.yaml](../deploy/observability/loki.yaml), [alloy-compose.alloy](../deploy/observability/alloy-compose.alloy),
+[alloy-k8s.alloy](../deploy/observability/alloy-k8s.alloy).
+
+Loki indexes **labels**, not text. Each line has:
+
+| Label | Values | |
+|---|---|---|
+| `service` | backend, worker, postgres, qdrant, ollama, ... | the compose service, or the pod's `app` label |
+| `container` (compose) / `pod` (Kubernetes) | `deploy-worker-2`, `worker-7c9...` | one replica |
+| `level` | DEBUG ... CRITICAL | backend and worker lines only |
+
+and, for backend and worker lines, `request_id`, `trace_id` and `user_id` as **structured metadata**: stored
+with the line and filterable, but not indexed (one stream per request would make Loki slow).
+That is why the backend and workers log JSON in compose and Kubernetes (`LOG_FORMAT=json`).
+
+Queries to paste in Explore → Loki (LogQL):
+
+```logql
+{service="backend", level="ERROR"}                              # backend errors
+{service=~"backend|worker"} | request_id="3f2a9c..."            # everything one request did
+{service=~"backend|worker"} | user_id="9"                       # everything user 9 did
+{service="worker"} |= "Traceback"                               # lines containing a text
+{service="backend"} | json | logger="app.audit" | event="auth.login.failure"   # audit events
+sum by (service) (count_over_time({level="ERROR"}[5m]))         # errors per service, as a graph
+```
+
+The other containers' lines (PostgreSQL, Qdrant, Ollama, nginx...) are stored as they are, with only `service`
+and `container`: `{service="ollama"} |= "error"`.
+
 ## Metrics
 
 All defined in [backend/app/core/metrics.py](../backend/app/core/metrics.py):
@@ -117,7 +156,8 @@ which feed the *time per step* panel and the service map.
 
 Users rate answers with a thumbs up or down; a thumbs down asks (optionally) what was wrong. Each rating is a
 row in the `feedback` table with a copy of the question, the answer, its sources and the answer's
-**request id**, so a bad answer leads straight to its log lines and its trace in Tempo. The copy is on
+**request id**, so a bad answer leads straight to its log lines (*Find in logs* on the dashboard) and its
+trace in Tempo. The copy is on
 purpose: an edited or regenerated chat puts a new answer at the same position, and the row must still say
 what was judged. Deleting a chat deletes its feedback.
 

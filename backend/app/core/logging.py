@@ -5,8 +5,9 @@ X-Request-ID response header and in error bodies, and added to every log line wr
 handling that request, so one id finds everything that happened to a user's failed request.
 Once the request is authenticated, the user id is added too ("everything user 9 did").
 
-Production logs one JSON object per line (what log collectors such as CloudWatch, Loki or
-Elasticsearch parse); development logs readable text.
+LOG_FORMAT=json logs one JSON object per line (what log collectors such as Loki, CloudWatch or
+Elasticsearch parse; the default in production, and what docker compose and Kubernetes set so that
+Grafana Alloy ships them to Loki); LOG_FORMAT=text logs readable text (the default in development).
 
 When tracing is on (core/telemetry.py), each line also carries the trace and span id, so a log
 line leads to its trace in Grafana (Tempo) and back.
@@ -23,7 +24,7 @@ from contextvars import ContextVar
 
 from opentelemetry import trace
 
-from app.core.config import IS_PRODUCTION, LOG_LEVEL
+from app.core.config import LOG_FORMAT, LOG_LEVEL
 
 _request_id: ContextVar[str] = ContextVar("request_id", default="-")
 _user_id: ContextVar[int | None] = ContextVar("user_id", default=None)
@@ -91,7 +92,7 @@ def setup_logging() -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.addFilter(_ContextFilter())
     handler.setFormatter(
-        _JsonFormatter() if IS_PRODUCTION
+        _JsonFormatter() if LOG_FORMAT == "json"
         else logging.Formatter("%(asctime)s %(levelname)s [%(request_id)s%(user)s%(trace)s] %(name)s: %(message)s")
     )
     root = logging.getLogger()

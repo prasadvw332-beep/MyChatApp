@@ -1,0 +1,52 @@
+# Grafana Loki: stores the logs of every container (single binary, local disk) and serves them to Grafana.
+#
+# Loki indexes only a few LABELS per stream (service, container, level), not the text of the lines.
+# A query picks streams by label, then scans their lines:   {service="backend", level="ERROR"} |= "Qdrant"
+# That keeps it cheap, and is why labels must have few values: request and trace ids go into
+# "structured metadata" instead (stored with each line, filterable, not indexed). See alloy-*.alloy.
+
+auth_enabled: false          # one tenant; Grafana is the only client
+
+server:
+  http_listen_port: 3100     # pushes from Alloy, queries from Grafana, /metrics for Prometheus
+  log_level: warn
+
+common:
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:              # on AWS: s3, so the logs outlive the disk
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: 2026-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13            # needed for structured metadata
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  retention_period: 168h     # keep logs for 7 days, like traces (tempo.yaml)
+  allow_structured_metadata: true
+  volume_enabled: true       # Grafana's Logs Drilldown: log volume per service and level
+  ingestion_rate_mb: 8       # a container stuck in a crash loop can't flood the disk
+  ingestion_burst_size_mb: 16
+
+# Groups similar lines into patterns ("<_> connection refused") for Grafana's Logs Drilldown
+pattern_ingester:
+  enabled: true
+
+compactor:
+  working_directory: /loki/compactor
+  retention_enabled: true    # actually delete chunks older than retention_period
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false

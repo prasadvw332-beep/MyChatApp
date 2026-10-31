@@ -41,5 +41,30 @@ datasources:
         enabled: true
       tracesToMetrics:
         datasourceUid: prometheus
+      # "Logs for this span" in a trace -> the lines the backend/workers wrote for the same trace.
+      # $$ is a literal $: Grafana would otherwise read ${...} as an environment variable.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: -5m
+        spanEndTimeShift: 5m
+        customQuery: true
+        query: '{service=~"backend|worker"} | trace_id="$${__trace.traceId}"'
       search:
         hide: false
+
+  # every container's output, shipped by Alloy (deploy/observability/alloy-*.alloy)
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      # a JSON line with a trace id gets a "Tempo" button that opens the trace
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":\s*"(\w+)"'
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: Open trace in Tempo

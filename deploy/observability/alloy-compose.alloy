@@ -1,0 +1,80 @@
+// Grafana Alloy for docker-compose: reads the output of every container of this project and sends it to Loki.
+// Kubernetes uses alloy-k8s.alloy (same pipeline, pods instead of containers).
+//
+// Apps only write to stdout (backend/app/core/logging.py); they don't know Loki exists. Changing where logs
+// go (Grafana Cloud, CloudWatch) is an edit here, like the OTel Collector for traces.
+//
+//   docker socket -> discover containers -> label them -> tail their output -> parse JSON -> Loki
+// Pipeline graph and health: http://localhost:12345
+
+// only the containers of this compose project: other containers on your machine are not ours
+// (COMPOSE_PROJECT is set in docker-compose.yml from the project name, "deploy" by default)
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=" + sys.env("COMPOSE_PROJECT")]
+  }
+}
+
+// only the rules are used (below, relabel_rules): loki.source.docker applies them to each container
+discovery.relabel "containers" {
+  targets = []
+
+  // service = the compose service name (backend, worker, postgres...): the label every query starts from
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+  // container = one replica (deploy-worker-2), for "only this worker"
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/?(.*)"
+    target_label  = "container"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  forward_to    = [loki.process.app.receiver]
+}
+
+// Our own JSON lines (backend, workers): the level becomes a label, the ids become structured metadata.
+// Lines of other containers (postgres, ollama...) pass through unchanged.
+loki.process "app" {
+  stage.match {
+    selector = "{service=~\"backend|worker\"}"
+
+    stage.json {
+      expressions = {
+        level      = "level",
+        request_id = "request_id",
+        user_id    = "user_id",
+        trace_id   = "trace_id",
+      }
+    }
+    // a handful of values (DEBUG..CRITICAL): fine as a label, and makes {level="ERROR"} fast
+    stage.labels {
+      values = { level = "" }
+    }
+    // one value per request: never a label (millions of streams), but still filterable:
+    //   {service="backend"} | request_id="3f2a..."
+    stage.structured_metadata {
+      values = {
+        request_id = "",
+        user_id    = "",
+        trace_id   = "",
+      }
+    }
+  }
+
+  forward_to = [loki.write.loki.receiver]
+}
+
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
