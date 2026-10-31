@@ -155,6 +155,7 @@ To turn on the deploy job (once you have a cluster), add these in GitHub → Set
  backend pods ─┬─ :9100/metrics ◄──── scraped every 15s ──── Prometheus ◄─┐
  worker pods  ─┤                                                          ├── Grafana  (dashboards, Explore)
                └─ spans (OTLP/HTTP :4318) ──► OTel Collector ──► Tempo ◄──┘
+ postgres-exporter :9187, Qdrant :6333, MinIO :9000, Collector :8888, Tempo, Grafana ──► Prometheus (also scraped)
 ```
 
 | Piece | What it answers | Where |
@@ -162,7 +163,9 @@ To turn on the deploy job (once you have a cluster), add these in GitHub → Set
 | **Prometheus** | *How much, how fast, how often?* Numbers over time: requests/s, p95 latency, errors, LLM time to first token, documents indexed/min | http://localhost:9090 |
 | **OpenTelemetry** | *What happened in this one request?* A trace per request (or per ingested document), with a span for every PostgreSQL query and every call to Ollama and Qdrant | the SDK in the backend ([app/core/telemetry.py](../backend/app/core/telemetry.py)) + the Collector |
 | **Tempo** | Stores the traces | queried through Grafana |
-| **Grafana** | Shows both: the **MyChatApp** dashboard, and Explore → Tempo for traces | http://localhost:3000 (anonymous viewer; `admin` / `GRAFANA_ADMIN_PASSWORD` to edit) |
+| **Alert rules** | *Is anything broken right now?* SLO burn rate, components down, saturation, ingest failures ([observability/alerts.yml](observability/alerts.yml)) | http://localhost:9090/alerts |
+| **postgres-exporter** | PostgreSQL's connections, transactions, cache hit ratio, deadlocks as metrics | scraped on :9187 |
+| **Grafana** | Shows all of it: the **MyChatApp · Production overview** dashboard, and Explore → Tempo for traces | http://localhost:3000 (anonymous viewer; `admin` / `GRAFANA_ADMIN_PASSWORD` to edit) |
 
 All metrics are defined in [app/core/metrics.py](../backend/app/core/metrics.py). They are served on port **9100**, not
 8000: nginx forwards all of `/api/*` to the backend, so a `/metrics` route there would be public.

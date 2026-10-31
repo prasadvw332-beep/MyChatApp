@@ -8,6 +8,13 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Production dashboard**: the Grafana dashboard reworked into an end-to-end operations view: alarms and
+  per-component health, SLOs with error budget and burn rate, ingest queue from PostgreSQL, PostgreSQL / Qdrant /
+  MinIO / Ollama panels, the telemetry pipeline, alert and restart annotations; a live system map
+  (Canvas, animated flow), latency heatmaps, SLO gauges, donuts, 10 s live refresh; synthetic users
+  (`deploy/loadgen`, compose profile `demo`) so the dashboard has traffic to show. Prometheus alert rules
+  (`alerts.yml`), postgres-exporter, and scraping of Qdrant, MinIO, the Collector, Tempo and Grafana.
+  `feature/production-dashboard`
 - **Caching**: embeddings cached by text (memory, then PostgreSQL `embedding_cache`, shared by the
   backend and workers); a semantic answer cache in Qdrant answers a chat's first question from a stored
   answer to a similar one (cosine >= 0.95), emptied on every document change; `X-Cache` header, "Caching"

@@ -1,0 +1,131 @@
+# Prometheus rules: SLO recording rules and alerts. Loaded by prometheus.yml / prometheus-k8s.yml (rule_files).
+# Check with:  docker compose -f deploy/docker-compose.yml exec prometheus promtool check rules /etc/prometheus/alerts.yml
+#
+# Firing alerts show in the dashboard's "Active alerts" table and at http://localhost:9090/alerts.
+# Nothing sends them anywhere yet: add an Alertmanager (or Amazon Managed Prometheus' alert manager on AWS)
+# and point it at Slack / PagerDuty / SNS to get paged.
+#
+# SLOs (the targets the dashboard's "SLOs & error budget" row measures):
+#   availability   99.9% of requests are not a 5xx                         (error budget 0.1%)
+#   API latency    99% of non-chat requests take under 1 s
+#   first word     95% of answers start within 10 s
+#
+# Burn rate = how fast the error budget is being spent. 1 = exactly the budget over 30 days.
+# Alerts use two windows (Google SRE workbook, ch. 5): the long one proves it is not a blip, the short
+# one makes the alert stop soon after the problem does.
+
+groups:
+  - name: slo-recording
+    rules:
+      # share of requests that failed with a 5xx; health probes excluded (they'd dilute every number).
+      # `or vector(0)`: with no 5xx at all the ratio is 0, not "no data"
+      - record: slo:http_error_ratio:rate5m
+        expr: (sum(rate(http_requests_total{status=~"5..", route!~"/health.*"}[5m])) or vector(0))
+              / sum(rate(http_requests_total{route!~"/health.*"}[5m]))
+      - record: slo:http_error_ratio:rate30m
+        expr: (sum(rate(http_requests_total{status=~"5..", route!~"/health.*"}[30m])) or vector(0))
+              / sum(rate(http_requests_total{route!~"/health.*"}[30m]))
+      - record: slo:http_error_ratio:rate1h
+        expr: (sum(rate(http_requests_total{status=~"5..", route!~"/health.*"}[1h])) or vector(0))
+              / sum(rate(http_requests_total{route!~"/health.*"}[1h]))
+      - record: slo:http_error_ratio:rate6h
+        expr: (sum(rate(http_requests_total{status=~"5..", route!~"/health.*"}[6h])) or vector(0))
+              / sum(rate(http_requests_total{route!~"/health.*"}[6h]))
+
+  - name: slo-alerts
+    rules:
+      - alert: ErrorBudgetBurnFast
+        expr: slo:http_error_ratio:rate1h > 14.4 * 0.001 and slo:http_error_ratio:rate5m > 14.4 * 0.001
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Error budget burning 14x too fast: 2% of the monthly budget gone in 1 hour"
+          description: "5xx ratio {{ $value | humanizePercentage }} over the last hour. Open the Traffic & errors row."
+
+      - alert: ErrorBudgetBurnSlow
+        expr: slo:http_error_ratio:rate6h > 6 * 0.001 and slo:http_error_ratio:rate30m > 6 * 0.001
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Error budget burning 6x too fast: 5% of the monthly budget gone in 6 hours"
+
+      - alert: FirstWordSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(llm_time_to_first_token_seconds_bucket[10m]))) > 10
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 time to first word is {{ $value | humanizeDuration }} (SLO: 10 s)"
+          description: "The model server is overloaded, or prompts got large. See 'Input tokens per answer'."
+
+  - name: availability
+    rules:
+      - alert: AppTargetDown
+        expr: up{job=~"backend|worker"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} {{ $labels.instance }} is not answering Prometheus"
+
+      - alert: DependencyDown
+        expr: up{job=~"postgres|qdrant|minio"} == 0 or pg_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} is down: chat, login or uploads will fail"
+
+      - alert: TelemetryTargetDown
+        expr: up{job=~"otel-collector|tempo|grafana"} == 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} is down: traces or dashboards are unavailable (the app itself is fine)"
+
+  - name: saturation
+    rules:
+      - alert: PostgresConnectionsHigh
+        expr: sum(pg_stat_activity_count) / max(pg_settings_max_connections) > 0.8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "PostgreSQL is using {{ $value | humanizePercentage }} of max_connections"
+
+      - alert: PodMemoryHigh
+        expr: process_resident_memory_bytes{job=~"backend|worker"} > 0.9 * 1024 * 1024 * 1024
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.job }} {{ $labels.instance }} is near its 1 GiB limit and may be OOM-killed"
+
+      - alert: TraceExportFailing
+        expr: sum(rate(otelcol_exporter_send_failed_spans_total[5m])) > 0
+              or sum(rate(otelcol_receiver_refused_spans_total[5m])) > 0
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "The OTel collector is dropping spans: traces are incomplete"
+
+  - name: ai-and-data
+    rules:
+      - alert: IngestFailures
+        expr: sum(increase(ingest_documents_total{outcome="failed"}[15m])) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value | humanize }} documents failed to ingest in the last 15 min"
+
+      - alert: PoisonedDocument
+        expr: sum(increase(guardrail_events_total{check="injection_document"}[15m])) > 0
+        labels: { severity: critical }
+        annotations:
+          summary: "A document in the knowledge base contains a prompt injection; find it in the audit log"
+
+      - alert: GuardModelErrors
+        expr: sum(increase(guardrail_events_total{action="error"}[15m])) > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "Content checks are failing open: messages are not being classified"
+
+      - alert: CacheErrors
+        expr: sum(increase(cache_errors_total[15m])) > 10
+        labels: { severity: warning }
+        annotations:
+          summary: "Cache reads/writes are failing; requests are slower and an upload may not have emptied the cache"

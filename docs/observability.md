@@ -7,7 +7,7 @@ Three questions, three tools, one screen:
 | **How much, how fast, how often?** (numbers over time) | **Prometheus** (metrics) | "p95 time to the first word went from 3 s to 12 s at 2 pm" |
 | **What happened inside this one request?** | **Tempo** (traces, sent by OpenTelemetry) | "this chat spent 16 s in Ollama and 0.004 s in Qdrant" |
 | **What exactly went wrong?** | **logs** (stdout, JSON in production) | "ConnectionError: Qdrant refused the connection" |
-| *all of the above in one place* | **Grafana** | the *MyChatApp · Service overview* dashboard |
+| *all of the above in one place* | **Grafana** | the *MyChatApp · Production overview* dashboard |
 
 The usual path: the **dashboard** shows *that* something is wrong, a **trace** shows *where*, the **logs** show *why*.
 They are linked: every log line carries the trace id (`t=1a2b3c4d` in development, `"trace_id"` in JSON).
@@ -32,16 +32,43 @@ With `make up` (docker compose):
 
 ## The dashboard, top to bottom
 
-1. **Health at a glance**: availability, errors, latency, time to first word, pods up. Green/orange/red.
-2. **Traffic & errors**: requests and errors per route (red = server errors, orange = bad requests, blue = not logged in).
-3. **AI pipeline**: *time per step* (ranked: generation, embedding, vector search, SQL), first word vs full answer,
+The order follows the questions on-call asks: *is anything broken? → is it within the SLO? → where? → why?*
+
+1. **Service status**: critical alarms and warnings firing, availability, error budget left, time to first word,
+   and one green/red lane per component (API, workers, PostgreSQL, Qdrant, MinIO, Ollama, the telemetry stack),
+   next to the list of active alerts.
+2. **Golden signals**: requests, errors, latency, answers, active users, cost, ingest backlog. Green/orange/red.
+3. **SLOs & error budget**: availability (99.9%), API latency (99% under 1 s), first word (95% under 10 s), and the
+   burn rate with its alert levels (6x warning, 14.4x critical). Targets and alerts live in
+   [alerts.yml](../deploy/observability/alerts.yml).
+4. **Traffic & errors**: requests and errors per route (red = server errors, orange = bad requests, blue = not logged in).
+5. **AI pipeline**: *time per step* (ranked: generation, embedding, vector search, SQL), first word vs full answer,
    questions answered without documents, agent tool calls.
-4. **Tokens & cost**: tokens per minute, estimated cost per feature, tokens per answer, generation speed,
-   and *usage by user* (from PostgreSQL).
-   Then **Guardrails**: blocked and flagged events, poisoned document chunks, guard model errors.
-5. **Document ingestion**: documents indexed / retried / failed, time per document.
-6. **Traces**: service map (who calls whom) and recent requests.
-7. **Pods & resources** (collapsed): memory, CPU, up/down per pod.
+6. **Caching**, **Tokens & cost** (with *usage by user* from PostgreSQL) and **Guardrails** (blocked and flagged
+   events, poisoned document chunks, guard model errors).
+7. **Document ingestion**: documents indexed / retried / failed, time per document, and the queue itself from
+   PostgreSQL: queued, processing, stuck, oldest wait, batches, the last error of each failed file.
+8. **Data stores & model server**: PostgreSQL (connections, cache hit ratio, transactions, long transactions),
+   Qdrant (vectors, search latency, errors), MinIO (files, storage, free disk), Ollama (calls and latency, from traces).
+9. **Traces**: service map (who calls whom) and recent requests.
+10. **Telemetry pipeline** and **Pods & resources** (collapsed): spans dropped on the way to Tempo, Prometheus series,
+    scrape targets; memory, CPU, up/down per pod.
+
+The top of the dashboard is a **live system map**: one box per component, tinted green (up) or red (down),
+with a live number inside and animated arrows in the direction requests flow. It refreshes every 10 s.
+
+**No traffic, no graphs.** Almost every panel is a rate of what users do. On a laptop with nobody using the app,
+start the synthetic users ([deploy/loadgen/loadgen.py](../deploy/loadgen/loadgen.py)): they log in, browse, ask
+questions (some repeated, some follow-ups, some in agent mode), occasionally fail on purpose (wrong password,
+missing file, a prompt injection) and queue a small generated story for the workers every 10 minutes.
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile demo up -d --no-deps loadgen   # start
+docker compose -f deploy/docker-compose.yml --profile demo stop loadgen              # stop
+```
+
+Every graph also shows **red marks** where an alert fired and **blue marks** where a backend or worker pod
+(re)started, so a spike can be lined up with a deploy or a crash.
 
 Hover the (i) on any panel for what it means. The dashboard is generated: edit
 [build_dashboard.py](../deploy/observability/grafana/build_dashboard.py), not the JSON.

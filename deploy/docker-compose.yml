@@ -89,6 +89,7 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_PROMETHEUS_AUTH_TYPE: public   # /minio/v2/metrics/* without a token; port 9000 is not published
     ports:
       - "9001:9001"          # MinIO web console, handy for looking at uploaded files
     volumes:
@@ -112,8 +113,27 @@ services:
       - ollama
     restart: "no"
 
+  # Synthetic users, so the Grafana dashboard has something to show (deploy/loadgen/loadgen.py).
+  # Not started by a plain `up`:  docker compose -f deploy/docker-compose.yml --profile demo up -d loadgen
+  loadgen:
+    profiles: [demo]
+    image: python:3.12-slim
+    command: ["python", "-u", "/loadgen/loadgen.py"]
+    environment:
+      LOADGEN_URL: http://frontend/api   # through nginx, like a browser
+      LOADGEN_USERS: 3
+      LOADGEN_USER: loadgen
+      LOADGEN_PASSWORD: loadgen-demo-password   # a throwaway local account the script registers itself
+      LOADGEN_INGEST_EVERY: 600                  # queue a generated story every 10 min; 0 = never
+    volumes:
+      - ./loadgen:/loadgen:ro
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
   # ---------- observability (configs in deploy/observability/) ----------
-  # metrics: backend/worker :9100/metrics  <- scraped by Prometheus  -> Grafana
+  # metrics: backend/worker :9100/metrics, postgres-exporter, qdrant, minio, the stack itself <- Prometheus -> Grafana
+  # alerts:  observability/alerts.yml, evaluated by Prometheus (http://localhost:9090/alerts)
   # traces:  backend/worker --OTLP-->  otel-collector  -> Tempo       -> Grafana
   # Versions are pinned: a dashboard or config that works today keeps working after a rebuild.
   otel-collector:
@@ -143,6 +163,17 @@ services:
       tempo-init:
         condition: service_completed_successfully
 
+  # PostgreSQL has no /metrics of its own: this reads its statistics views and serves them on :9187
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    environment:
+      DATA_SOURCE_URI: postgres:5432/mychatapp?sslmode=disable
+      DATA_SOURCE_USER: postgres
+      DATA_SOURCE_PASS: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   prometheus:
     image: prom/prometheus:v3.5.0
     command:
@@ -154,6 +185,7 @@ services:
       - "9090:9090"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus-data:/prometheus
 
   grafana:
@@ -165,6 +197,7 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"                              # everyone else can look
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/mychatapp.json
+      GF_METRICS_ENABLED: "true"           # Grafana's own /metrics, for the "Telemetry pipeline" row
       GRAFANA_DB_USER: postgres            # per-user token usage (llm_usage table)
       GRAFANA_DB_PASSWORD: postgres
     volumes:

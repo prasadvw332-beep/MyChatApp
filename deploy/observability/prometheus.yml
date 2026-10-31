@@ -3,10 +3,17 @@
 # Prometheus PULLS: every 15s it asks each target for /metrics on port 9100 (app/core/metrics.py).
 # dns_sd_configs looks the name up and scrapes every IP it gets back. In compose a service name
 # resolves to all of its replicas, so the 3 workers are 3 targets without listing them.
+#
+# Besides our own app, every dependency is scraped too, so the dashboard covers the whole path of a request:
+# PostgreSQL (through postgres-exporter), Qdrant and MinIO (built-in /metrics), and the telemetry stack itself.
 
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+
+# SLO recording rules + alerts (burn rate, dependencies down, saturation). Shown in the dashboard's top rows.
+rule_files:
+  - /etc/prometheus/alerts.yml
 
 scrape_configs:
   - job_name: backend
@@ -20,6 +27,38 @@ scrape_configs:
       - names: [worker]
         type: A
         port: 9100
+
+  # ---------- data stores ----------
+  - job_name: postgres
+    static_configs:
+      - targets: [postgres-exporter:9187]
+
+  - job_name: qdrant
+    static_configs:
+      - targets: [qdrant:6333]
+
+  - job_name: minio
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: [minio:9000]
+
+  - job_name: minio-bucket
+    metrics_path: /minio/v2/metrics/bucket
+    static_configs:
+      - targets: [minio:9000]
+
+  # ---------- the telemetry pipeline (who watches the watchers) ----------
+  - job_name: otel-collector
+    static_configs:
+      - targets: [otel-collector:8888]
+
+  - job_name: tempo
+    static_configs:
+      - targets: [tempo:3200]
+
+  - job_name: grafana
+    static_configs:
+      - targets: [grafana:3000]
 
   - job_name: prometheus
     static_configs:
