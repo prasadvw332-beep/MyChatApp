@@ -5,6 +5,7 @@ import json
 
 import pytest
 from langchain_core.documents import Document
+from langchain_core.messages import AIMessageChunk
 
 from app.agents import loop
 from app.agents import tools as agent_tools
@@ -13,6 +14,7 @@ from app.main import app
 from app.models import User
 from app.rag import knowledge_base
 from app.schemas.chat import Message
+from app.services import usage
 from tests.fakes import FakeVectorStore, ScriptedModel
 
 CV = Document("Studied at Pune University.", metadata={"source": "cv.pdf", "page": 1, "doc_id": "d1"})
@@ -73,6 +75,38 @@ def test_step_limit_forces_an_answer_without_tools(kb, monkeypatch):
     events = run_agent(model, monkeypatch)
     assert [c["tools"] for c in model.calls] == [True, True, False]
     assert events[-2]["type"] == "token"
+
+
+def test_agent_is_a_langgraph_graph_of_model_and_tools():
+    nodes = set(loop.build([], usage.Tally()).get_graph().nodes)
+    assert {"agent", "tools"} <= nodes
+
+
+def test_tokens_stream_while_the_model_is_still_writing(monkeypatch):
+    """The second word is only written after the first has reached the caller: if the graph held tokens
+    back until the model step finished, this would wait forever."""
+    first_seen = asyncio.Event()
+
+    class Waiting:
+        def bind_tools(self, tools):
+            return self
+
+        async def astream(self, messages):
+            yield AIMessageChunk(content="one ")
+            await first_seen.wait()
+            yield AIMessageChunk(content="two")
+
+    monkeypatch.setattr(loop, "agent_llm", Waiting())
+
+    async def go():
+        texts = []
+        async for e in loop.run([Message(role="user", content="hi")], []):
+            if e["type"] == "token":
+                texts.append(e["text"])
+                first_seen.set()
+        return texts
+
+    assert asyncio.run(asyncio.wait_for(go(), timeout=5)) == ["one ", "two"]
 
 
 def test_route_streams_ndjson_events(client, kb, monkeypatch):

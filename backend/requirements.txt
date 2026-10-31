@@ -67,6 +67,7 @@ httpx==0.28.1
     # via
     #   backend
     #   langchain-core
+    #   langgraph-sdk
     #   mcp
     #   ollama
     #   qdrant-client
@@ -99,16 +100,36 @@ langchain-core==1.7.0
     #   langchain-ollama
     #   langchain-qdrant
     #   langchain-text-splitters
+    #   langgraph
+    #   langgraph-checkpoint
+    #   langgraph-prebuilt
+    #   langgraph-sdk
 langchain-mcp-adapters==0.3.2
     # via backend
 langchain-ollama==1.1.0
     # via backend
 langchain-protocol==0.0.20
-    # via langchain-core
+    # via
+    #   langchain-core
+    #   langgraph-sdk
 langchain-qdrant==1.1.0
     # via backend
 langchain-text-splitters==1.1.3
     # via backend
+langgraph==1.2.2 ; sys_platform == 'win32'
+    # via backend
+langgraph==1.2.16 ; sys_platform != 'win32'
+    # via backend
+langgraph-checkpoint==4.3.0
+    # via
+    #   langgraph
+    #   langgraph-prebuilt
+langgraph-prebuilt==1.1.1
+    # via langgraph
+langgraph-sdk==0.3.15 ; sys_platform == 'win32'
+    # via langgraph
+langgraph-sdk==0.4.8 ; sys_platform != 'win32'
+    # via langgraph
 langsmith==0.14.12
     # via langchain-core
 mako==1.4.3
@@ -176,8 +197,12 @@ opentelemetry-util-http==0.66b2
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-instrumentation-httpx
-orjson==3.13.0 ; platform_python_implementation != 'PyPy'
-    # via langsmith
+orjson==3.13.0
+    # via
+    #   langgraph-sdk
+    #   langsmith
+ormsgpack==1.13.0
+    # via langgraph-checkpoint
 packaging==26.3
     # via
     #   langchain-core
@@ -207,6 +232,7 @@ pydantic==2.14.1
     #   fastapi
     #   langchain-core
     #   langchain-qdrant
+    #   langgraph
     #   langsmith
     #   mcp
     #   ollama
@@ -314,7 +340,9 @@ uvicorn==0.54.0
     #   backend
     #   mcp
 websockets==16.1.1 ; sys_platform != 'win32'
-    # via langsmith
+    # via
+    #   langgraph-sdk
+    #   langsmith
 websockets==17.3 ; sys_platform == 'win32'
     # via langsmith
 wrapt==2.5.2
@@ -322,6 +350,8 @@ wrapt==2.5.2
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-httpx
 xxhash==4.0.2
-    # via langsmith
+    # via
+    #   langgraph
+    #   langsmith
 zstandard==0.25.0
     # via langsmith

@@ -5,6 +5,20 @@ The **Agent** button in the composer switches replies from `/chat` (always retri
 search again with other words, or list and read a whole document to summarize it. Each tool call
 shows up above the answer.
 
+The agent is a [LangGraph](https://langchain-ai.github.io/langgraph/) graph (`app/agents/loop.py`):
+
+```mermaid
+flowchart LR
+    S([start]) --> A[agent<br/>one model call]
+    A -->|tool calls, steps left| T[tools<br/>run them, screen results]
+    T --> A
+    A -->|answer, or out of steps| E([end])
+```
+
+After `AGENT_MAX_STEPS` tool rounds the model is called once more without tools, so it has to answer.
+The nodes stream tokens and tool steps to the browser as they happen. There is no checkpointer: a run
+lasts one request, and the chat history comes with the request ([decision 0010](decisions/0010-agent-on-langgraph-without-checkpointer.md)).
+
 All tools come from MCP servers (`app/agents/tools.py`):
 
 - **our knowledge-base server** (`app/mcp_server/`): `search_documents`, `list_documents`, `read_document`.

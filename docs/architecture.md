@@ -110,7 +110,7 @@ backend/                    Python API + ingestion workers (one Docker image)
       routes/               health, auth, chat, agent, chats, documents, ingest, evals
     prompts/                prompt templates, one file per feature
     rag/                    chunking.py, knowledge_base.py (index/retrieve/delete), answer.py
-    agents/                 loop.py (model -> tools -> ... -> answer), tools.py (over MCP)
+    agents/                 loop.py (LangGraph: model -> tools -> ... -> answer), tools.py (over MCP)
     mcp_server/             the knowledge base as an MCP server (search, list, read documents)
     ingestion/              queue.py (in PostgreSQL), worker.py, cli.py
     clients/                llm.py (Ollama), storage.py (MinIO), vector_store.py (Qdrant)
