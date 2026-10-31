@@ -146,7 +146,7 @@ jobs:
       - name: Connect kubectl to the cluster
         run: aws eks update-kubeconfig --name mychatapp-cluster --region ap-south-1
 
-      # Real secrets come from GitHub Secrets, NOT from deploy/k8s/secret.yaml in the repo.
+      # Real secrets come from GitHub Secrets, NOT from deploy/k8s/overlays/dev/secret.yaml in the repo.
       # "--dry-run=client -o yaml | kubectl apply" = create the Secret, or update it if it exists.
       # Secrets are passed as env variables (not pasted into the script), so special
       # characters in a password can't break or inject shell commands. GitHub also
@@ -174,15 +174,12 @@ jobs:
             --from-literal=GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      # Point the manifests at the images we just pushed (instead of the local
-      # names like mychatapp-backend:1.0), and leave out the dev secret.yaml.
-      # This only changes the runner's copy of the files, not your repo.
+      # Point the prod overlay at the images we just pushed (instead of the local names like
+      # mychatapp-backend:1.0). Production settings and the missing dev Secret are already in
+      # the overlay (deploy/k8s/overlays/prod). This only changes the runner's copy of the files.
       - name: Set image tags
-        working-directory: deploy/k8s
+        working-directory: deploy/k8s/overlays/prod
         run: |
-          kustomize edit remove resource secret.yaml
-          # production mode: startup fails on weak settings; the cluster is served over https (ACM)
-          sed -i 's/APP_ENV: "development"/APP_ENV: "production"/; s/COOKIE_SECURE: "false"/COOKIE_SECURE: "true"/' configmap.yaml
           kustomize edit set image \
             mychatapp-backend=${{ env.IMAGE_PREFIX }}-backend:${{ github.sha }} \
             mychatapp-frontend=${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
@@ -191,6 +188,6 @@ jobs:
       # If the rollout fails, the step fails and the Actions tab shows a red X.
       - name: Deploy
         run: |
-          kubectl apply -k deploy/k8s/
+          kubectl apply -k deploy/k8s/overlays/prod
           kubectl rollout status deploy/backend -n mychatapp --timeout=5m
           kubectl rollout status deploy/frontend -n mychatapp --timeout=5m

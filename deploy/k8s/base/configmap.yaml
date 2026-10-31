@@ -11,7 +11,7 @@ metadata:
   namespace: mychatapp
 data:
   # "production" makes the backend refuse to start with dev passwords or COOKIE_SECURE=false
-  # (app/core/config.py validate()). CI switches it on when deploying to the real cluster.
+  # (app/core/config.py validate()). The prod overlay switches it on (overlays/prod/production.yaml).
   APP_ENV: "development"
   LOG_LEVEL: "INFO"
   OLLAMA_URL: "http://ollama:11434"

@@ -100,7 +100,9 @@ frontend/                   Vite + vanilla JS (built into an nginx image)
   Dockerfile
 deploy/                     how to run it (see deploy/README.md)
   docker-compose.yml        everything on one machine
-  k8s/                      Kubernetes manifests (Deployments, Services, workers, ...)
+  k8s/base/                 Kubernetes manifests, the same everywhere (Deployments, Services, workers, ...)
+  k8s/overlays/dev|prod/    what differs per environment (dev Secret; production settings)
+  observability/            Prometheus, Grafana (+ dashboard generator), Tempo, OTel Collector
 .github/workflows/          CI/CD: build images, push to ghcr.io, deploy
 ```
 
@@ -110,7 +112,7 @@ deploy/                     how to run it (see deploy/README.md)
 |---|---|
 | a new endpoint | `api/routes/<feature>.py`, then one line in `api/router.py` |
 | a new table | `models/<area>.py`, export it in `models/__init__.py`, then an Alembic migration |
-| a new setting | `core/config.py` (+ `.env.example`, `deploy/k8s/configmap.yaml`) |
+| a new setting | `core/config.py` (+ `.env.example`, `deploy/k8s/base/configmap.yaml`) |
 | a new prompt | `prompts/<feature>.py` |
 | a new agent tool | a tool on an MCP server: ours in `mcp_server/`, or an external server in `MCP_SERVERS_FILE` |
 | a new request/response body | `schemas/<area>.py` |
@@ -210,7 +212,7 @@ uv run python -m app.ingestion.cli --failures 4    # why documents in batch 4 fa
 uv run python -m app.ingestion.cli --retry-failed
 ```
 
-The same is available over HTTP: `POST /ingest/batches` (multi-file upload), `GET /ingest/batches`, `GET /ingest/batches/{id}/failures`, `POST /ingest/retry-failed`. In Kubernetes the workers are `deploy/k8s/worker-deployment.yaml` (3 replicas).
+The same is available over HTTP: `POST /ingest/batches` (multi-file upload), `GET /ingest/batches`, `GET /ingest/batches/{id}/failures`, `POST /ingest/retry-failed`. In Kubernetes the workers are `deploy/k8s/base/worker-deployment.yaml` (3 replicas).
 
 The throughput limit is embedding, not the number of workers: all workers share one Ollama. `OLLAMA_NUM_PARALLEL=3` lets it serve them at the same time. Beyond that, more speed needs more Ollama replicas or a GPU.
 

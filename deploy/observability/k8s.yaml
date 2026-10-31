@@ -1,5 +1,6 @@
 # The observability stack on Kubernetes: the same four services as in docker-compose.yml.
-# Applied together with the app by `kubectl apply -k deploy/k8s/` (it includes ../observability).
+# Applied together with the app by `kubectl apply -k deploy/k8s/overlays/<dev|prod>`
+# (deploy/k8s/base includes ../../observability).
 # The config files are turned into ConfigMaps by kustomization.yaml in this folder.
 #
 #   Grafana:     kubectl port-forward svc/grafana 3000:3000 -n mychatapp      -> http://localhost:3000
@@ -274,7 +275,7 @@ spec:
             - name: GF_SECURITY_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: grafana-secrets    # deploy/k8s/secret.yaml (CI creates it from GitHub Secrets)
+                  name: grafana-secrets    # dev: deploy/k8s/overlays/dev/secret.yaml; prod: CI, from GitHub Secrets
                   key: GRAFANA_ADMIN_PASSWORD
             # per-user token usage is read from the app database (llm_usage table)
             - name: GRAFANA_DB_USER

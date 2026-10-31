@@ -1,4 +1,4 @@
-# Kubernetes side of this folder; included by deploy/k8s/kustomization.yaml (resources: ../observability).
+# Kubernetes side of this folder; included by deploy/k8s/base/kustomization.yaml (resources: ../../observability).
 # docker-compose mounts the same config files directly, so there is one copy of each.
 #
 # configMapGenerator turns each file into a ConfigMap. Its name gets a hash of the contents

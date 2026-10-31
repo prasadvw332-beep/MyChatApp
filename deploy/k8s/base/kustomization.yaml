@@ -1,13 +1,12 @@
-# Lets you apply every file at once, in a sensible order (Namespace first):
-#   kubectl apply -k deploy/k8s/
-# Kustomize is built into kubectl. Later it can also patch these files per
-# environment (dev / prod) without copying them.
+# The app as it is in every environment. Not applied directly: apply an overlay, which adds
+# what differs per environment (secrets, production settings, image tags):
+#   kubectl apply -k deploy/k8s/overlays/dev     # laptop (Docker Desktop Kubernetes)
+#   kubectl apply -k deploy/k8s/overlays/prod    # the real cluster (CI does this)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
   - configmap.yaml
-  - secret.yaml
   - postgres.yaml
   - qdrant.yaml
   - minio.yaml
@@ -18,4 +17,4 @@ resources:
   - frontend-deployment.yaml
   - frontend-service.yaml
   # Prometheus, Grafana, Tempo and the OpenTelemetry Collector (with their config files)
-  - ../observability
+  - ../../observability

@@ -1,0 +1,11 @@
+# Merged over base/configmap.yaml: only the keys listed here change.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: mychatapp
+data:
+  # the backend refuses to start with dev passwords, a short JWT_SECRET or COOKIE_SECURE=false
+  APP_ENV: "production"
+  # the cluster is served over https (ACM certificate on the load balancer)
+  COOKIE_SECURE: "true"

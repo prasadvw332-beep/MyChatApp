@@ -2,7 +2,7 @@
 
     uv run python -m app.ingestion.worker
 
-Run as many as you like (deploy/k8s/worker-deployment.yaml runs 3); they share the queue in PostgreSQL
+Run as many as you like (deploy/k8s/base/worker-deployment.yaml runs 3); they share the queue in PostgreSQL
 (see queue.py). On SIGTERM (Kubernetes scaling down or rolling out a new version)
 the worker finishes its current document before exiting, so no work is thrown away.
 """
