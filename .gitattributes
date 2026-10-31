@@ -1,0 +1,9 @@
+# Store text files with LF line endings in git, whatever the OS. Without this, Windows checkouts
+# convert to CRLF and back, and shell scripts / Dockerfiles copied into Linux images can break.
+* text=auto eol=lf
+
+# Generated: collapse in GitHub diffs, excluded from language statistics
+frontend/package-lock.json linguist-generated=true -diff
+backend/uv.lock linguist-generated=true -diff
+backend/requirements.txt linguist-generated=true
+deploy/observability/grafana/dashboards/*.json linguist-generated=true

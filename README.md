@@ -173,6 +173,9 @@ npm run lint
 
 CI runs all of these on every push and pull request; images are only built and deployed when they pass.
 
+Shortcuts: `make check` runs every linter and test, `make help` lists all tasks (Makefile; on Windows
+`winget install ezwinports.make`). `make hooks` installs pre-commit hooks that lint each commit.
+
 ## Production behaviour
 
 | Concern | How it's handled |

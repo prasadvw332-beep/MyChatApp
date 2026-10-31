@@ -55,3 +55,7 @@ target-version = "py314"
 # pyflakes + syntax errors + import order + common bug patterns (bugbear)
 select = ["E4", "E7", "E9", "F", "I", "B"]
 ignore = ["B008"]  # FastAPI's `user: User = CurrentUser` is the intended Depends() idiom
+
+[tool.ruff.lint.isort]
+# our own packages, so imports sort the same from backend/ (CI) and from the repo root (pre-commit)
+known-first-party = ["app", "evals", "tests"]
