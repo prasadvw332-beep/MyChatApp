@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars to change defaults (variables.tf lists them all). Nothing secret goes here.
+
+# region            = "ap-south-1"
+# cluster_name      = "mychatapp-cluster"   # also change it in .github/workflows/ci-cd.yml
+# github_repository = "prasadvw332-beep/MyChatApp"
+
+# one NAT gateway per zone: survives a zone outage, costs ~3x
+# single_nat_gateway = false
+
+# limit kubectl to your office/VPN (CI then needs a self-hosted runner inside the range)
+# api_allowed_cidrs = ["203.0.113.0/24"]
+
+# the account already has a GitHub OIDC provider (another project created it)
+# create_github_oidc_provider = false

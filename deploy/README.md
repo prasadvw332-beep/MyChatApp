@@ -110,7 +110,7 @@ and `kubectl scale` is undone within seconds: change the HPA's `minReplicas`/`ma
 
 HPAs measure load through the **metrics-server**, which Docker Desktop doesn't include. Install it once
 (the extra flag is because Docker Desktop's kubelet has a self-signed certificate; never use it on EKS,
-where the metrics-server is an EKS add-on):
+where Terraform installs the metrics-server):
 
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.7.2/components.yaml
@@ -130,17 +130,18 @@ kubectl get hpa -n mychatapp --watch
 
 | Local | AWS |
 |---|---|
-| Docker Desktop Kubernetes | **EKS** (managed Kubernetes): `eksctl create cluster` |
+| Docker Desktop Kubernetes | **EKS** (managed Kubernetes), with its VPC, nodes, add-ons and CI's deploy role: [Terraform](terraform/README.md) |
 | `docker build -t mychatapp-backend:1.0` | push to **ECR**: `docker tag ... <account>.dkr.ecr.<region>.amazonaws.com/mychatapp-backend:1.0` + `docker push`, and use that name in `image:` |
 | `k8s/base/postgres.yaml` | **RDS for PostgreSQL**: delete the file, put the RDS address in `DATABASE_URL` |
 | `minio.yaml` | **S3**: same API, delete the file, give the backend an IAM role |
-| PVC disks | **EBS** volumes, created automatically by the EBS CSI driver |
+| PVC disks | **EBS** volumes, created by the EBS CSI driver (Terraform installs it; the prod overlay makes encrypted gp3 the default) |
 | Service `type: LoadBalancer` | an AWS **Load Balancer** with a public DNS name |
 | `k8s/overlays/dev/secret.yaml` | **Secrets Manager** + External Secrets Operator |
 | Ollama on CPU | a **GPU node group** (e.g. g5.xlarge), or Amazon Bedrock instead |
 | http | an **Ingress** (AWS Load Balancer Controller) + **ACM** certificate for https; then set `COOKIE_SECURE: "true"` |
 
 The Deployments and Services barely change. That portability is the main point of Kubernetes.
+The cluster itself is code: [deploy/terraform](terraform/README.md) creates it with `terraform apply`.
 
 ## Step 4: CI/CD with GitHub Actions
 

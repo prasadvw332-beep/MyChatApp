@@ -1,0 +1,20 @@
+# The default StorageClass on EKS: every PersistentVolumeClaim without a storageClassName (PostgreSQL,
+# Qdrant, MinIO, Ollama, Prometheus, Grafana, Tempo) gets an encrypted gp3 EBS disk. New EKS clusters
+# have no default class, so without this file those claims stay Pending.
+# Needs the EBS CSI driver add-on (deploy/terraform/eks.tf). Docker Desktop has its own default
+# (hostpath), so this is in the prod overlay only.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+# create the disk in the zone where the pod is scheduled (an EBS disk can't move between zones)
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+# keep the disk when its claim is deleted: a mistaken `kubectl delete namespace` must not delete the database
+reclaimPolicy: Retain

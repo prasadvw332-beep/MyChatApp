@@ -2,7 +2,7 @@
 # them when they are idle, between minReplicas and maxReplicas. It owns the replica count, which is
 # why the Deployments have no `replicas:` (every `kubectl apply` would reset it and fight the HPA).
 #
-# It needs the metrics-server (pod CPU and memory): on EKS, as the metrics-server add-on;
+# It needs the metrics-server (pod CPU and memory): on EKS, Terraform installs it (deploy/terraform);
 # on Docker Desktop, install it once (deploy/README.md, "Autoscaling"). Without it the HPAs still
 # keep minReplicas running, they just can't measure load, and `kubectl get hpa` shows <unknown>.
 #
@@ -15,7 +15,7 @@
 # and PostgreSQL / Qdrant / MinIO (stateful, one replica each).
 #
 # Nodes: an HPA only adds pods. When they don't fit, they stay Pending until a node is added:
-# on EKS that means a node group with room to grow, and adding nodes automatically
+# on EKS the node group has room to grow (deploy/terraform), but adding nodes automatically
 # needs Cluster Autoscaler or Karpenter, which are not installed yet.
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

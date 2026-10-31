@@ -66,6 +66,26 @@ jobs:
       - name: Tests
         run: npm test
 
+  # Infrastructure as code (deploy/terraform): formatted and valid. Nothing is planned or applied
+  # here: that needs AWS credentials and is done by hand (deploy/terraform/README.md).
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deploy/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.13.0"
+      - name: Format
+        run: terraform fmt -check -recursive -diff
+      - name: Validate
+        # -backend=false: download providers and modules only, without touching the S3 state
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
   # ---------------------------------------------------------------------------
   # Job 1: build both images, and push them (only on main, not for pull requests)
   # ---------------------------------------------------------------------------

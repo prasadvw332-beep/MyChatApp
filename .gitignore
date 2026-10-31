@@ -19,5 +19,13 @@ Thumbs.db
 
 !.env.example
 
+# Terraform: providers/modules cache, local state, and the per-person settings (the *.example files stay)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+deploy/terraform/backend.hcl
+deploy/terraform/terraform.tfvars
+
 # Eval outputs
 backend/evals/results/

@@ -1,0 +1,7 @@
+# Copy to backend.hcl (not committed) and use with: terraform init -backend-config=backend.hcl
+# The bucket must exist first (README.md, "First time"). Bucket names are global: add something unique.
+bucket       = "mychatapp-terraform-state-<your-account-id>"
+key          = "mychatapp/terraform.tfstate"
+region       = "ap-south-1"
+encrypt      = true
+use_lockfile = true # a lock file next to the state: two applies can't run at once

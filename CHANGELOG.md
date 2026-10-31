@@ -8,6 +8,10 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Infrastructure as code**: Terraform for the EKS cluster CI deploys to (`deploy/terraform`): VPC, managed
+  node group, add-ons (EBS CSI, metrics-server), GitHub OIDC deploy role scoped to the `production`
+  environment, S3 state with locking; default gp3 StorageClass in the prod overlay; `terraform fmt`/`validate`
+  in CI. `feature/terraform`
 - **Autoscaling**: HorizontalPodAutoscalers for the backend (2-6), ingestion workers (2-8) and frontend (2-4)
   on CPU, with scale-down stabilization; PodDisruptionBudgets; the Deployments no longer set `replicas`
   (the HPAs own it). Docker Desktop needs the metrics-server (`deploy/README.md`, "Autoscaling").

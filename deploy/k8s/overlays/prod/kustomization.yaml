@@ -4,6 +4,7 @@
 # What differs from dev, and why it is here instead of edited in place:
 #   - no secret.yaml: CI creates backend-secrets and grafana-secrets from GitHub Secrets
 #   - production.yaml: APP_ENV=production (the backend refuses weak settings) and https-only cookies
+#   - storageclass.yaml: the default StorageClass for EKS disks
 #   - images: CI pins the images it just built, e.g.
 #       kustomize edit set image mychatapp-backend=ghcr.io/<user>/mychatapp-backend:<git sha>
 #     (only on CI's copy of the repo, so this file in git keeps the local names)
@@ -11,5 +12,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
+  - storageclass.yaml   # EKS: encrypted gp3 disks as the default (the cluster comes from deploy/terraform)
 patches:
   - path: production.yaml
