@@ -96,7 +96,7 @@ frontend/                   Vite + vanilla JS (built into an nginx image)
       sidebar.js, theme.js, evals.js
     style.css
   tests/                    Vitest in jsdom: helpers + a smoke test of the whole app (fake backend)
-  nginx.conf                serves the site, proxies /api to the backend
+  nginx.conf.template       serves the site, proxies /api to the backend
   Dockerfile
 deploy/                     how to run it (see deploy/README.md)
   docker-compose.yml        everything on one machine

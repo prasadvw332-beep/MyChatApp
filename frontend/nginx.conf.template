@@ -1,0 +1,45 @@
+# nginx inside the frontend container.
+#   /        -> the static files built by Vite
+#   /api/... -> the backend (the /api prefix is removed: /api/chat -> backend /chat)
+#
+# A template: at container start the nginx image fills in ${...} from the environment
+# (see the Dockerfile). Only variables that exist in the environment are replaced, so
+# nginx's own $host, $scheme, ... are left alone.
+#
+# ${BACKEND_HOST} is the backend's hostname: "backend" in docker-compose (the service name),
+# the Service's full name in Kubernetes (deploy/k8s/frontend-deployment.yaml).
+
+# The container's own DNS server (Docker's 127.0.0.11, or kube-dns), found by the nginx image.
+# Names are looked up again every 10s: when the backend is recreated it gets a new IP, and
+# with the default (look up once at startup) nginx kept sending to the old one -> 502.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+
+server {
+    listen 80;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Uploads up to the backend's MAX_UPLOAD_MB (20) plus some room
+    client_max_body_size 25m;
+
+    location /api/ {
+        # A variable in proxy_pass is what makes nginx use the resolver at request time.
+        # Then nginx no longer strips the /api/ prefix itself, so the rewrite does it:
+        # /api/chat?x=1 -> backend /chat?x=1
+        set $backend ${BACKEND_HOST}:8000;
+        rewrite ^/api/(.*)$ /$1 break;
+        proxy_pass http://$backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Chat replies are streamed token by token; don't hold them back in a buffer
+        proxy_buffering off;
+        proxy_read_timeout 300s;  # a small CPU model can be slow to answer
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

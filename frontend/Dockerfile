@@ -29,8 +29,13 @@ RUN npm run build
 # ---- Stage 2: serve the files with nginx ----
 FROM nginx:1.27-alpine
 
-# Our nginx config: serve the site + proxy /api to the backend.
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Our nginx config: serve the site + proxy /api to the backend. It is a template: the nginx image
+# fills in the ${...} values below when the container starts and writes conf.d/default.conf.
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+# NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1: the image puts the container's DNS server in NGINX_LOCAL_RESOLVERS
+# BACKEND_HOST: the backend's hostname (Kubernetes overrides it with the Service's full name)
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+ENV BACKEND_HOST=backend
 
 # Take only the built files from stage 1.
 COPY --from=build /app/dist /usr/share/nginx/html

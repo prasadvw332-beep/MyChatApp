@@ -3,7 +3,7 @@
 #
 # type: ClusterIP (the default) = reachable only INSIDE the cluster. That's what we
 # want: the browser never calls the backend directly, the frontend's nginx does
-# (proxy_pass http://backend:8000 in frontend/nginx.conf; "backend" is this name).
+# (BACKEND_HOST in frontend/nginx.conf.template; "backend" is this name).
 apiVersion: v1
 kind: Service
 metadata:

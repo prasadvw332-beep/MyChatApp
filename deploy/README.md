@@ -28,7 +28,7 @@
 |---|---|---|
 | `backend/Dockerfile` | — | Recipe for the backend **image** (Python + your code) |
 | `frontend/Dockerfile` | — | Multi-stage: Node builds the site, nginx serves it |
-| `frontend/nginx.conf` | — | nginx: static files + proxy `/api` → backend |
+| `frontend/nginx.conf.template` | — | nginx: static files + proxy `/api` → backend (re-resolves the backend every 10s) |
 | `deploy/docker-compose.yml` | — | Run everything on one machine with Docker only |
 | `k8s/namespace.yaml` | Namespace | A "folder" for all our objects |
 | `k8s/configmap.yaml` | ConfigMap | Non-secret settings → env variables |

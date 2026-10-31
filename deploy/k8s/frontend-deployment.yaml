@@ -23,6 +23,11 @@ spec:
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80
+          env:
+            # nginx's resolver doesn't use the pod's DNS search list, so the short name "backend"
+            # wouldn't resolve: give it the Service's full name (frontend/nginx.conf.template)
+            - name: BACKEND_HOST
+              value: backend.mychatapp.svc.cluster.local
           resources:
             requests:
               cpu: 20m
