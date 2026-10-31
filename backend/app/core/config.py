@@ -55,6 +55,21 @@ QDRANT_TIMEOUT = int(os.getenv("QDRANT_TIMEOUT", "30"))
 # Measured with nomic-embed-text + prefixes: related questions >= ~0.60, unrelated <= ~0.57.
 MIN_SCORE = float(os.getenv("MIN_SCORE", "0.58"))
 
+# Caching (app/cache/, docs/caching.md)
+# Embeddings: the same text always gets the same vector, so it is computed once. An LRU in each process,
+# then PostgreSQL (shared by backend replicas and workers, kept across restarts and re-indexing).
+EMBED_CACHE = os.getenv("EMBED_CACHE", "true").lower() == "true"
+EMBED_CACHE_MEMORY_ITEMS = int(os.getenv("EMBED_CACHE_MEMORY_ITEMS", "10000"))
+# Answers: a first question this similar (cosine) to one already answered gets the stored answer, without
+# retrieval or the chat model. Measured with nomic-embed-text + prefixes: rewordings of a question score
+# 0.975-0.997, questions that differ in one key word ("phone" vs "email", "phone model") 0.83-0.87. A wrong
+# cached answer is worse than a slow one, so stay well above the second group. Every document change empties it.
+SEMANTIC_CACHE = os.getenv("SEMANTIC_CACHE", "true").lower() == "true"
+SEMANTIC_CACHE_THRESHOLD = float(os.getenv("SEMANTIC_CACHE_THRESHOLD", "0.95"))
+SEMANTIC_CACHE_TTL_SECONDS = int(os.getenv("SEMANTIC_CACHE_TTL_SECONDS", "86400"))
+# named after the documents collection: a new embedding model (new QDRANT_COLLECTION) gets a fresh cache too
+SEMANTIC_CACHE_COLLECTION = os.getenv("SEMANTIC_CACHE_COLLECTION") or f"{QDRANT_COLLECTION}_answers"
+
 # PostgreSQL (app data: eval results)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://postgres:postgres@localhost:5432/mychatapp")
 

@@ -12,8 +12,15 @@ from fastapi.testclient import TestClient
 from prometheus_client import REGISTRY
 
 from app.api import deps
+from app.cache import semantic
 from app.main import app
 from app.models import User
+
+
+@pytest.fixture(autouse=True)
+def no_answer_cache(monkeypatch):
+    """The semantic cache talks to Qdrant; tests that want it install one on an in-memory Qdrant."""
+    monkeypatch.setattr(semantic, "cache", None)
 
 
 @pytest.fixture

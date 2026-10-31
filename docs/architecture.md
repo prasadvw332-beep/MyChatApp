@@ -50,15 +50,22 @@ sequenceDiagram
     B->>N: POST /api/chat {messages}
     N->>A: POST /chat
     A->>P: who is this session? (users)
-    A->>O: embed the question
+    A->>O: embed the question (unless cached: memory, then embedding_cache)
+    opt first question of a chat
+        A->>Q: a similar question already answered? (answers collection)
+        Note over A: hit: send the stored answer, X-Cache: hit, done
+    end
     A->>Q: 5 most similar chunks
     Note over A: best score < MIN_SCORE: answer without documents
     A->>O: generate (prompt + chunks + history), streamed
     O-->>A: tokens
     A-->>B: tokens (text stream), sources in the X-Sources header
     A->>P: token usage row (llm_usage)
+    A->>Q: store the answer (first question only, if it passed the guardrails)
     B->>A: PUT /chats/{id} (the chat, saved)
 ```
+
+See [caching.md](caching.md) for both caches.
 
 Agent mode (`POST /agent/chat`) replaces the fixed "retrieve, then answer" with a loop where the model
 chooses tools; see [agent-mode.md](agent-mode.md).
@@ -69,6 +76,8 @@ chooses tools; see [agent-mode.md](agent-mode.md).
 flowchart TD
     routes["api/routes<br/>HTTP: validate, call, shape the response"] --> rag & agents & services & repositories
     rag["rag/<br/>chunking, retrieval, prompts"] --> clients & repositories
+    routes --> cache
+    rag --> cache["cache/<br/>embeddings + semantic answers"] --> clients & repositories
     agents["agents/ + mcp_server/<br/>tool-using agent"] --> rag
     services["services/<br/>logic combining the rest (usage tracking)"] --> repositories
     guardrails["guardrails/<br/>injection + content safety"] --> clients & services
@@ -110,11 +119,12 @@ backend/                    Python API + ingestion workers (one Docker image)
       routes/               health, auth, chat, agent, chats, documents, ingest, evals
     prompts/                prompt templates, one file per feature
     rag/                    chunking.py, knowledge_base.py (index/retrieve/delete), answer.py
+    cache/                  embeddings.py (memory + PostgreSQL), semantic.py (answers) (docs/caching.md)
     agents/                 loop.py (LangGraph: model -> tools -> ... -> answer), tools.py (over MCP)
     mcp_server/             the knowledge base as an MCP server (search, list, read documents)
     ingestion/              queue.py (in PostgreSQL), worker.py, cli.py
-    clients/                llm.py (Ollama), storage.py (MinIO), vector_store.py (Qdrant)
-    repositories/           chat_store, doc_store, user_store, usage_store
+    clients/                llm.py (Ollama), storage.py (MinIO), vector_store.py + answer_store.py (Qdrant)
+    repositories/           chat_store, doc_store, user_store, usage_store, embedding_cache_store
     services/               usage.py: token + cost tracking
     guardrails/             injection.py (patterns, fencing, canary), content.py (Llama Guard) (docs/guardrails.md)
   migrations/               Alembic database migrations

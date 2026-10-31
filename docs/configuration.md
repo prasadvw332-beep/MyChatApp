@@ -53,6 +53,19 @@ See [guardrails.md](guardrails.md).
 | `QDRANT_TIMEOUT` | `30` | seconds |
 | `MIN_SCORE` | `0.58` | if even the best chunk scores lower, the question isn't about the documents |
 
+## Caching
+
+See [caching.md](caching.md).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `EMBED_CACHE` | `true` | reuse the vector of a text embedded before: memory, then PostgreSQL (`embedding_cache`) |
+| `EMBED_CACHE_MEMORY_ITEMS` | `10000` | vectors kept in memory per process (≈ 63 MB at 768 dimensions) |
+| `SEMANTIC_CACHE` | `true` | answer a chat's first question from a stored answer to a similar one |
+| `SEMANTIC_CACHE_THRESHOLD` | `0.95` | minimum cosine similarity for a hit. Different questions can score 0.87 ([measurements](caching.md#choosing-the-threshold)) |
+| `SEMANTIC_CACHE_TTL_SECONDS` | `86400` | answers expire after this; every document change also empties the cache |
+| `SEMANTIC_CACHE_COLLECTION` | `<QDRANT_COLLECTION>_answers` | Qdrant collection for the answers |
+
 ## Storage
 
 | Variable | Default | Meaning |

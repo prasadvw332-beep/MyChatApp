@@ -16,3 +16,4 @@ Records 0001 to 0008 were written on 2026-10-31 to document choices already made
 | 0008 | [Generate the Grafana dashboard from code](0008-generated-grafana-dashboard.md) | 2026-10-31 |
 | 0009 | [Guardrails: pattern checks always on, Llama Guard optional, fail open](0009-guardrails-heuristics-plus-optional-llama-guard.md) | 2026-10-31 |
 | 0010 | [Agent on LangGraph, without a checkpointer](0010-agent-on-langgraph-without-checkpointer.md) | 2026-10-31 |
+| 0011 | [Cache embeddings by text, and answers to first questions by meaning](0011-caching-embeddings-and-first-question-answers.md) | 2026-10-31 |

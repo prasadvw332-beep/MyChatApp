@@ -7,6 +7,7 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from app.cache import semantic
 from app.clients.llm import llm, title_llm
 from app.core import metrics
 from app.core.config import CHAT_MODEL
@@ -53,15 +54,27 @@ async def title(req: ChatRequest):
 @router.post("/chat")
 async def chat(req: ChatRequest):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
+    cacheable = semantic.cacheable(req.messages)
+    asked_at = time.time()  # before the documents are read: see app/cache/semantic.py
 
     async def retrieve():
+        """A cached answer, or else the chunks to write a new one from."""
+        if cacheable and (hit := await asyncio.to_thread(semantic.lookup, question)):
+            return hit, []
         try:
-            return await asyncio.to_thread(knowledge_base.retrieve, question)
+            return None, await asyncio.to_thread(knowledge_base.retrieve, question)
         except Exception as e:
             raise DependencyUnavailable("Document search") from e
 
-    # the safety check calls a model too: run it alongside the search, not before it
-    docs, _ = await asyncio.gather(retrieve(), check_question(question))
+    # the safety check calls a model too: run it alongside the search, not before it.
+    # It runs on a cache hit as well: the question is new even when the answer is not.
+    (hit, docs), _ = await asyncio.gather(retrieve(), check_question(question))
+    if hit:
+        return StreamingResponse(
+            iter([hit.answer]),
+            media_type="text/plain; charset=utf-8",
+            headers={"X-Sources": json.dumps(hit.sources), "X-Cache": "hit"},
+        )
     messages = build_messages(req.messages, docs)
     sources = cite(docs)
 
@@ -69,6 +82,7 @@ async def chat(req: ChatRequest):
         started, first = time.perf_counter(), True
         tally = usage.Tally()
         guard = AnswerGuard(question)
+        answer: list[str] = []
         try:
             async for chunk in llm.astream(messages):
                 if first:
@@ -79,6 +93,7 @@ async def chat(req: ChatRequest):
                 if notice := guard.check(text):
                     yield WITHHELD + notice
                     return
+                answer.append(text)
                 yield text
         except Exception:
             # the headers are already sent, so the error can only go into the text itself
@@ -89,9 +104,12 @@ async def chat(req: ChatRequest):
         await usage.record("chat", tally, CHAT_MODEL)
         if notice := await guard.finish():
             yield WITHHELD + notice
+            return
+        if cacheable:  # only a complete answer that passed the guardrails is reused
+            await asyncio.to_thread(semantic.remember, question, "".join(answer), sources, asked_at)
 
     return StreamingResponse(
         token_stream(),
         media_type="text/plain; charset=utf-8",
-        headers={"X-Sources": json.dumps(sources)},
+        headers={"X-Sources": json.dumps(sources), "X-Cache": "miss" if cacheable else "off"},
     )

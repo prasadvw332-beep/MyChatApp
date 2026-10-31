@@ -2,13 +2,15 @@
 
 FakeVectorStore implements the VectorStore protocol; FakeDocStore and FakeStorage replace the
 module-level functions of doc_store and storage that knowledge_base calls; ScriptedModel plays
-the chat model.
+the chat model, TableEmbeddings the embedding model, FakeVectorRows the embedding cache table.
 """
 
+import hashlib
 import json
 from types import SimpleNamespace
 
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_core.messages import AIMessageChunk
 
 
@@ -79,6 +81,46 @@ class FakeStorage:
 
     def delete(self, doc_id):
         self.files.pop(doc_id, None)
+
+
+class TableEmbeddings(Embeddings):
+    """Vectors from a table (or derived from the text), and every text the model was asked to embed."""
+
+    def __init__(self, table: dict[str, list[float]] | None = None):
+        self.table = table or {}
+        self.embedded: list[str] = []
+
+    def _vector(self, text):
+        if text in self.table:
+            return self.table[text]
+        digest = hashlib.sha256(text.encode()).digest()
+        return [b / 255 for b in digest[:3]]
+
+    def embed_documents(self, texts):
+        self.embedded += texts
+        return [self._vector(t) for t in texts]
+
+    def embed_query(self, text):
+        self.embedded.append(text)
+        return self._vector(text)
+
+
+class FakeVectorRows:
+    """Mirrors embedding_cache_store."""
+
+    def __init__(self, down: bool = False):
+        self.rows: dict[str, list[float]] = {}
+        self.down = down
+
+    def get_many(self, keys):
+        if self.down:
+            raise ConnectionError("postgres down")
+        return {k: self.rows[k] for k in keys if k in self.rows}
+
+    def put_many(self, model, vectors):
+        if self.down:
+            raise ConnectionError("postgres down")
+        self.rows |= vectors
 
 
 class ScriptedModel:

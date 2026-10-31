@@ -21,6 +21,11 @@ data:
   QDRANT_URL: "http://qdrant:6333"
   QDRANT_COLLECTION: "documents_v2"
   MIN_SCORE: "0.58"
+  # caching (docs/caching.md); the answer cache is emptied by every document upload or delete
+  EMBED_CACHE: "true"
+  SEMANTIC_CACHE: "true"
+  SEMANTIC_CACHE_THRESHOLD: "0.95"
+  SEMANTIC_CACHE_TTL_SECONDS: "86400"
   MINIO_ENDPOINT: "minio:9000"
   MINIO_BUCKET: "documents"
   CORS_ORIGINS: "http://localhost"

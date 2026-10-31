@@ -256,6 +256,34 @@ ts("Agent tool calls / min", [('sum by (tool, ok) (rate(agent_tool_calls_total[$
    overrides=[color(".*ok=false", "red")])
 y += 7
 
+# ======================================================================== 3a. caching
+SC, EC = "semantic_cache_lookups_total", "embedding_cache_lookups_total"
+row("Caching  ·  answers and embeddings the models did not have to compute")
+stat("First questions answered from cache",
+     f'sum(increase({SC}{{result="hit"}}[$__range])) / clamp_min(sum(increase({SC}[$__range])), 1e-9)',
+     "percentunit", 0, w=6, color_mode="none", decimals=1,
+     desc="Share of first questions answered without retrieval or the chat model. Follow-up questions are "
+          "never cached. Low is normal right after a document upload: every upload empties the cache.")
+stat("Embeddings from cache",
+     f'sum(increase({EC}{{result!="miss"}}[$__range])) / clamp_min(sum(increase({EC}[$__range])), 1e-9)',
+     "percentunit", 6, w=6, color_mode="none", decimals=1,
+     desc="Texts whose vector came from memory or PostgreSQL instead of the embedding model.")
+stat("Answers served from cache", f'sum(increase({SC}{{result="hit"}}[$__range])) or vector(0)', "short", 12,
+     w=6, color_mode="none", decimals=0)
+stat("Cache errors", 'sum(increase(cache_errors_total[$__range])) or vector(0)', "short", 18, w=6,
+     thresholds=th("green", (1, "orange")), decimals=0,
+     desc="Cache reads/writes that failed; requests went ahead without the cache. Errors in the semantic cache "
+          "right after an upload mean it may not have been emptied: look for 'could not be cleared' in the logs.")
+y += 4
+ts("First questions / min", [(f"sum by (result) (rate({SC}[$__rate_interval])) * 60", "{{result}}")],
+   "short", 0, bars=True, stack=True, overrides=[color("hit", "green"), color("miss", "orange")])
+ts("Embeddings / min by source", [(f"sum by (result) (rate({EC}[$__rate_interval])) * 60", "{{result}}")],
+   "short", 12, bars=True, stack=True,
+   overrides=[color("memory", "green"), color("database", "blue"), color("miss", "orange")],
+   desc="memory = this process already had it, database = another process or an earlier run computed it, "
+        "miss = sent to the embedding model.")
+y += 8
+
 # ======================================================================== 3b. tokens & cost
 PG = {"type": "grafana-postgresql-datasource", "uid": "postgres"}
 row("Tokens & cost  ·  what the model is used for, and what it would cost")

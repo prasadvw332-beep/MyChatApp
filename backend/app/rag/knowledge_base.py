@@ -4,6 +4,7 @@ import uuid
 
 from langchain_core.documents import Document
 
+from app.cache import semantic
 from app.clients import storage
 from app.clients.vector_store import VectorStore
 from app.clients.vector_store import store as default_store
@@ -39,6 +40,7 @@ def ingest(filename: str, data: bytes) -> dict:
     doc_store.mark_ready(doc_id, len(docs))
     for old in old_ids - {doc_id}:
         delete_document(old)
+    semantic.forget_all()  # cached answers were written without this document
     return {"doc_id": doc_id, "filename": filename, "chunks": len(docs)}
 
 
@@ -51,6 +53,7 @@ def index(doc_id: str, filename: str, data: bytes) -> int:
     docs, ids = _chunks(doc_id, filename, data)
     store.delete_doc(doc_id)
     store.add(docs, ids=ids)
+    semantic.forget_all()
     return len(docs)
 
 
@@ -114,6 +117,7 @@ def delete_document(doc_id: str) -> None:
     store.delete_doc(doc_id)
     storage.delete(doc_id)
     doc_store.delete(doc_id)
+    semantic.forget_all()  # cached answers may quote it
 
 
 def retrieve(question: str, k: int = TOP_K) -> list[Document]:

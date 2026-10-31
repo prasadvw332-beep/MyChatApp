@@ -46,6 +46,15 @@ guardrail_events = Counter("guardrail_events_total", "Guardrail checks that foun
 retrieval_duration = Histogram("retrieval_duration_seconds", "Embedding the question + vector search")
 retrieval_no_context = Counter("retrieval_no_context_total", "Questions where no chunk passed MIN_SCORE")
 
+# Caching (app/cache/). Embeddings: result = memory | database | miss (computed by the model).
+# Answers: result = hit | miss, counted for single-turn questions only (follow-ups are never cached).
+embedding_cache = Counter("embedding_cache_lookups_total", "Texts to embed, by where the vector came from",
+                          ["result"])
+semantic_cache = Counter("semantic_cache_lookups_total", "Single-turn chat questions, answered from the cache or not",
+                         ["result"])
+cache_errors = Counter("cache_errors_total", "Cache reads/writes that failed; the request went ahead without it",
+                       ["cache"])
+
 # Agent
 agent_tool_calls = Counter("agent_tool_calls_total", "Agent tool calls", ["tool", "ok"])
 

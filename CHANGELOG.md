@@ -8,6 +8,10 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Caching**: embeddings cached by text (memory, then PostgreSQL `embedding_cache`, shared by the
+  backend and workers); a semantic answer cache in Qdrant answers a chat's first question from a stored
+  answer to a similar one (cosine >= 0.95), emptied on every document change; `X-Cache` header, "Caching"
+  row in Grafana. `feature/caching`
 - **Agent mode** with MCP: the knowledge base exposed as an MCP server, and an agent that picks tools
   (search, list, read documents) before answering. `feature/agent-mcp`
 - **Observability**: Prometheus metrics (requests, latency, LLM time to first token, retrieval, ingestion),

@@ -4,7 +4,18 @@ import httpx
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
-from app.core.config import AGENT_MODEL, CHAT_MODEL, EMBED_MODEL, GUARD_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
+from app.cache.embeddings import CachedEmbeddings
+from app.core.config import (
+    AGENT_MODEL,
+    CHAT_MODEL,
+    EMBED_CACHE,
+    EMBED_CACHE_MEMORY_ITEMS,
+    EMBED_MODEL,
+    GUARD_MODEL,
+    OLLAMA_TIMEOUT,
+    OLLAMA_URL,
+)
+from app.repositories import embedding_cache_store
 
 
 class PrefixedEmbeddings(Embeddings):
@@ -33,7 +44,10 @@ _TIMEOUT = {"timeout": httpx.Timeout(OLLAMA_TIMEOUT, connect=5)}
 
 
 def _embeddings(model: str) -> Embeddings:
-    base = OllamaEmbeddings(model=model, base_url=OLLAMA_URL, client_kwargs=_TIMEOUT)
+    base: Embeddings = OllamaEmbeddings(model=model, base_url=OLLAMA_URL, client_kwargs=_TIMEOUT)
+    if EMBED_CACHE:
+        # under the prefixes, so the cache key is the text the model really embeds
+        base = CachedEmbeddings(base, model, EMBED_CACHE_MEMORY_ITEMS, embedding_cache_store)
     for family, (doc_prefix, query_prefix) in EMBED_PREFIXES.items():
         if family in model:
             return PrefixedEmbeddings(base, doc_prefix, query_prefix)
