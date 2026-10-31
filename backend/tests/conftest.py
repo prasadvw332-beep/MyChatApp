@@ -13,14 +13,24 @@ from prometheus_client import REGISTRY
 
 from app.api import deps
 from app.cache import semantic
+from app.core import rate_limit
 from app.main import app
 from app.models import User
+from tests.fakes import FakeRateLimits
 
 
 @pytest.fixture(autouse=True)
 def no_answer_cache(monkeypatch):
     """The semantic cache talks to Qdrant; tests that want it install one on an in-memory Qdrant."""
     monkeypatch.setattr(semantic, "cache", None)
+
+
+@pytest.fixture(autouse=True)
+def rate_limits(monkeypatch) -> FakeRateLimits:
+    """Counted in memory instead of PostgreSQL; every test starts with nothing counted."""
+    rows = FakeRateLimits()
+    monkeypatch.setattr(rate_limit, "counts", rows)
+    return rows
 
 
 @pytest.fixture

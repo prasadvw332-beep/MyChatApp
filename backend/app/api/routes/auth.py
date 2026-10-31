@@ -2,9 +2,10 @@ import re
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from app.api.deps import CurrentUser
+from app.api.deps import CurrentUser, limit_per_ip
 from app.core import security
 from app.core.audit import audit
+from app.core.config import RATE_LIMIT_REGISTER
 from app.core.errors import Conflict, InvalidInput
 from app.core.logging import set_user_id
 from app.models import User
@@ -25,7 +26,7 @@ def _login(response: Response, user: User) -> dict:
     return _public(user)
 
 
-@router.post("/register", status_code=201)
+@router.post("/register", status_code=201, dependencies=[limit_per_ip("register", RATE_LIMIT_REGISTER)])
 def register(body: Credentials, response: Response):
     username = body.username.strip().lower()
     if not USERNAME.fullmatch(username):

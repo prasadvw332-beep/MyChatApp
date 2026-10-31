@@ -2,7 +2,8 @@
 
 FakeVectorStore implements the VectorStore protocol; FakeDocStore and FakeStorage replace the
 module-level functions of doc_store and storage that knowledge_base calls; ScriptedModel plays
-the chat model, TableEmbeddings the embedding model, FakeVectorRows the embedding cache table.
+the chat model, TableEmbeddings the embedding model, FakeVectorRows the embedding cache table,
+FakeRateLimits the rate_limits table.
 """
 
 import hashlib
@@ -121,6 +122,20 @@ class FakeVectorRows:
         if self.down:
             raise ConnectionError("postgres down")
         self.rows |= vectors
+
+
+class FakeRateLimits:
+    """Plays repositories/rate_limit_store.py: hits per (key, window_start)."""
+
+    def __init__(self, fail: bool = False):
+        self.hits: dict[tuple[str, int], int] = {}
+        self.fail = fail
+
+    def hit(self, key, window_start, window_seconds):
+        if self.fail:
+            raise ConnectionError("database down")
+        self.hits[key, window_start] = self.hits.get((key, window_start), 0) + 1
+        return self.hits[key, window_start]
 
 
 class ScriptedModel:

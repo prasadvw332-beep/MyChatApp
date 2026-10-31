@@ -103,6 +103,8 @@ All defined in [backend/app/core/metrics.py](../backend/app/core/metrics.py):
 | `retrieval_no_context_total` | | questions where no chunk passed `MIN_SCORE` |
 | `agent_tool_calls_total` | tool, ok | |
 | `guardrail_events_total` | check, action (blocked, flagged, error) | what the [guardrails](guardrails.md) found |
+| `rate_limit_rejections_total` | limit (chat, title, upload, eval, register) | requests refused with 429 ([rate limits](configuration.md#rate-limits)) |
+| `rate_limit_errors_total` | | limit checks that failed (PostgreSQL down); those requests went through |
 | `ingest_documents_total` | outcome (indexed, retry, failed) | |
 | `ingest_duration_seconds`, `ingest_chunks_total` | | per document |
 

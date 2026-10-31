@@ -5,9 +5,10 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from app.api.deps import limit_per_user
 from app.clients import storage
 from app.core.audit import audit
-from app.core.config import MAX_UPLOAD_MB
+from app.core.config import MAX_UPLOAD_MB, RATE_LIMIT_UPLOAD
 from app.core.errors import AppError, DependencyUnavailable, NotFound
 from app.rag import knowledge_base
 from app.rag.chunking import SUPPORTED
@@ -35,7 +36,7 @@ async def set_tags(doc_id: str, body: TagsIn):
     return doc
 
 
-@router.post("/upload")
+@router.post("/upload", dependencies=[limit_per_user("upload", RATE_LIMIT_UPLOAD)])
 async def upload(file: UploadFile):
     name = file.filename or "upload"
     ext = os.path.splitext(name)[1].lower()

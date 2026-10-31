@@ -10,6 +10,7 @@ The full exception, with stack trace, goes to the log under the same request_id.
 """
 
 import logging
+import math
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -24,6 +25,7 @@ class AppError(Exception):
     status = 500
     code = "internal_error"
     message = "Something went wrong. Please try again."
+    headers: dict[str, str] | None = None  # extra response headers, e.g. Retry-After
 
     def __init__(self, message: str | None = None):
         super().__init__(message or self.message)
@@ -48,6 +50,17 @@ class Blocked(AppError):
     status, code, message = 400, "blocked", "This message can't be answered."
 
 
+class TooManyRequests(AppError):
+    """A rate limit was hit (app/core/rate_limit.py)."""
+
+    status, code = 429, "rate_limited"
+
+    def __init__(self, retry_after: int):
+        wait = f"{retry_after} seconds" if retry_after < 120 else f"{math.ceil(retry_after / 60)} minutes"
+        super().__init__(f"Too many requests. Please try again in {wait}.")
+        self.headers = {"Retry-After": str(retry_after)}
+
+
 class DependencyUnavailable(AppError):
     """A backing service (Ollama, Qdrant, MinIO, PostgreSQL) failed. Raise it `from` the original error."""
 
@@ -64,7 +77,9 @@ def _body(status: int, detail, code: str) -> JSONResponse:
 async def _app_error(_: Request, e: AppError) -> JSONResponse:
     if e.status >= 500:
         log.error("%s: %s", e.code, e.message, exc_info=e.__cause__ or e)
-    return _body(e.status, e.message, e.code)
+    response = _body(e.status, e.message, e.code)
+    response.headers.update(e.headers or {})
+    return response
 
 
 async def _http_error(_: Request, e: HTTPException) -> JSONResponse:

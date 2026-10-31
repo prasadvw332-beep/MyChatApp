@@ -55,6 +55,10 @@ semantic_cache = Counter("semantic_cache_lookups_total", "Single-turn chat quest
 cache_errors = Counter("cache_errors_total", "Cache reads/writes that failed; the request went ahead without it",
                        ["cache"])
 
+# Rate limits (app/core/rate_limit.py; limit = chat | title | upload | eval | register)
+rate_limited = Counter("rate_limit_rejections_total", "Requests refused with 429 by a rate limit", ["limit"])
+rate_limit_errors = Counter("rate_limit_errors_total", "Rate limit checks that failed; the request went ahead")
+
 # Agent
 agent_tool_calls = Counter("agent_tool_calls_total", "Agent tool calls", ["tool", "ok"])
 

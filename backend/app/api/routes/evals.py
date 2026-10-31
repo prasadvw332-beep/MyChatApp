@@ -6,7 +6,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException
 
+from app.api.deps import limit_per_user
 from app.core.audit import audit
+from app.core.config import RATE_LIMIT_EVAL
 from app.schemas.evals import RunRequest
 from evals import run_ragas
 
@@ -43,7 +45,7 @@ async def get_run(run_id: str):
     return run
 
 
-@router.post("/run", status_code=202)
+@router.post("/run", status_code=202, dependencies=[limit_per_user("eval", RATE_LIMIT_EVAL)])
 async def start_run(req: RunRequest):
     global _task
     if _status.get("running"):

@@ -26,6 +26,11 @@ data:
   SEMANTIC_CACHE: "true"
   SEMANTIC_CACHE_THRESHOLD: "0.95"
   SEMANTIC_CACHE_TTL_SECONDS: "86400"
+  # rate limits per user (registration: per IP), shared by the replicas through PostgreSQL (docs/configuration.md)
+  RATE_LIMIT_CHAT: "20/minute"
+  RATE_LIMIT_UPLOAD: "60/hour"
+  RATE_LIMIT_EVAL: "5/hour"
+  RATE_LIMIT_REGISTER: "5/hour"
   MINIO_ENDPOINT: "minio:9000"
   MINIO_BUCKET: "documents"
   CORS_ORIGINS: "http://localhost"

@@ -89,6 +89,14 @@ SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"  # true when served over https
 MAX_UPLOAD_MB = 20
 
+# Rate limits (app/core/rate_limit.py): "<count>/<second|minute|hour|day>" per user (registration: per IP),
+# counted in PostgreSQL so all backend replicas share them. Empty = no limit for that group.
+RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
+RATE_LIMIT_CHAT = os.getenv("RATE_LIMIT_CHAT", "20/minute")  # /chat and /agent/chat together; /title separately
+RATE_LIMIT_UPLOAD = os.getenv("RATE_LIMIT_UPLOAD", "60/hour")  # /upload and /ingest/batches requests
+RATE_LIMIT_EVAL = os.getenv("RATE_LIMIT_EVAL", "5/hour")  # RAGAS runs: minutes of model time each
+RATE_LIMIT_REGISTER = os.getenv("RATE_LIMIT_REGISTER", "5/hour")  # new accounts per IP
+
 # Batch ingestion (app/ingestion/)
 INGEST_BATCH_SIZE = int(os.getenv("INGEST_BATCH_SIZE", "100"))  # documents per batch
 INGEST_MAX_ATTEMPTS = int(os.getenv("INGEST_MAX_ATTEMPTS", "3"))  # then the document is marked failed

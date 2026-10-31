@@ -8,6 +8,11 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Rate limiting**: per-user limits on the endpoints that run a model or embed documents (chat + agent,
+  titles, uploads, eval runs) and per-IP on registration; fixed windows counted in PostgreSQL
+  (`rate_limits`, migration 0006) so every replica shares them; `429` with `Retry-After` in the usual
+  error shape; audited and counted (`rate_limit_rejections_total`); fails open if PostgreSQL is down.
+  `feature/rate-limiting`
 - **Production dashboard**: the Grafana dashboard reworked into an end-to-end operations view: alarms and
   per-component health, SLOs with error budget and burn rate, ingest queue from PostgreSQL, PostgreSQL / Qdrant /
   MinIO / Ollama panels, the telemetry pipeline, alert and restart annotations; a live system map

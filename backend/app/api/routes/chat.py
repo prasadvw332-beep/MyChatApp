@@ -7,10 +7,11 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
+from app.api.deps import limit_per_user
 from app.cache import semantic
 from app.clients.llm import llm, title_llm
 from app.core import metrics
-from app.core.config import CHAT_MODEL
+from app.core.config import CHAT_MODEL, RATE_LIMIT_CHAT
 from app.core.errors import DependencyUnavailable
 from app.guardrails import check_question
 from app.guardrails.content import WITHHELD, AnswerGuard
@@ -24,7 +25,7 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
-@router.post("/title")
+@router.post("/title", dependencies=[limit_per_user("title", RATE_LIMIT_CHAT)])
 async def title(req: ChatRequest):
     """Generate a short chat title from the user's questions (used for the history sidebar)."""
     asked = [m.content.strip()[:300] for m in req.messages if m.role == "user"][:4]
@@ -51,7 +52,7 @@ async def title(req: ChatRequest):
     return {"title": text}
 
 
-@router.post("/chat")
+@router.post("/chat", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
 async def chat(req: ChatRequest):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
     cacheable = semantic.cacheable(req.messages)

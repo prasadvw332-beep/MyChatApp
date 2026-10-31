@@ -66,6 +66,22 @@ See [caching.md](caching.md).
 | `SEMANTIC_CACHE_TTL_SECONDS` | `86400` | answers expire after this; every document change also empties the cache |
 | `SEMANTIC_CACHE_COLLECTION` | `<QDRANT_COLLECTION>_answers` | Qdrant collection for the answers |
 
+## Rate limits
+
+Per logged-in user (registration: per client IP), in fixed windows, counted in PostgreSQL (`rate_limits`)
+so all backend replicas share the count. Over the limit: `429` with `Retry-After`, code `rate_limited`;
+the first rejection in a window is audited (`rate_limit.exceeded`), every one is counted in
+`rate_limit_rejections_total{limit}`. If PostgreSQL is unreachable, requests go through
+(`rate_limit_errors_total`). Format: `<count>/<second|minute|hour|day>`; empty = no limit.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `RATE_LIMIT_ENABLED` | `true` | `false` turns every limit off |
+| `RATE_LIMIT_CHAT` | `20/minute` | `/chat` and `/agent/chat` together; `/title` has its own count at the same rate |
+| `RATE_LIMIT_UPLOAD` | `60/hour` | `/upload` and `/ingest/batches` requests together (a batch counts once) |
+| `RATE_LIMIT_EVAL` | `5/hour` | `/evals/run` |
+| `RATE_LIMIT_REGISTER` | `5/hour` | new accounts per IP. Login has its own throttle: 5 failures per username+IP in 5 minutes |
+
 ## Storage
 
 | Variable | Default | Meaning |

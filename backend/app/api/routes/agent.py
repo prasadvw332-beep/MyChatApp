@@ -7,7 +7,9 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
 from app.agents import loop
+from app.api.deps import limit_per_user
 from app.core import metrics
+from app.core.config import RATE_LIMIT_CHAT
 from app.core.errors import DependencyUnavailable
 from app.guardrails import check_question
 from app.guardrails.content import AnswerGuard
@@ -17,7 +19,8 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
-@router.post("/agent/chat")
+# one budget with /chat: both run the chat model
+@router.post("/agent/chat", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
 async def agent_chat(req: ChatRequest, request: Request):
     """Like /chat, but the model decides which tools to use. Streams NDJSON events (see app/agents/loop.py)."""
     tools = getattr(request.app.state, "agent_tools", None)  # opened by the lifespan in main.py
