@@ -276,6 +276,14 @@ spec:
                 secretKeyRef:
                   name: grafana-secrets    # deploy/k8s/secret.yaml (CI creates it from GitHub Secrets)
                   key: GRAFANA_ADMIN_PASSWORD
+            # per-user token usage is read from the app database (llm_usage table)
+            - name: GRAFANA_DB_USER
+              value: postgres
+            - name: GRAFANA_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: backend-secrets
+                  key: POSTGRES_PASSWORD
             - name: GF_AUTH_ANONYMOUS_ENABLED
               value: "true"
             - name: GF_AUTH_ANONYMOUS_ORG_ROLE

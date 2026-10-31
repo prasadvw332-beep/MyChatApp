@@ -11,6 +11,22 @@ datasources:
     isDefault: true
     editable: false
 
+  # the app database, for per-user token usage (table llm_usage). Credentials come from Grafana's
+  # environment (docker-compose.yml / k8s.yaml), never from this file.
+  - name: PostgreSQL
+    uid: postgres
+    type: grafana-postgresql-datasource
+    url: postgres:5432
+    user: $GRAFANA_DB_USER
+    editable: false
+    jsonData:
+      database: mychatapp
+      sslmode: disable
+      postgresVersion: 1700
+      maxOpenConns: 2   # dashboards only: never compete with the app for connections
+    secureJsonData:
+      password: $GRAFANA_DB_PASSWORD
+
   - name: Tempo
     uid: tempo
     type: tempo

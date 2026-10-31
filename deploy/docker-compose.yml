@@ -165,6 +165,8 @@ services:
       GF_AUTH_ANONYMOUS_ENABLED: "true"                              # everyone else can look
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/mychatapp.json
+      GRAFANA_DB_USER: postgres            # per-user token usage (llm_usage table)
+      GRAFANA_DB_PASSWORD: postgres
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro

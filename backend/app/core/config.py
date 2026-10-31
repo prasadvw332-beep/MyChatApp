@@ -28,6 +28,12 @@ AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "4"))  # tool rounds before i
 # optional JSON file of extra MCP servers for the agent (see mcp_servers.example.json)
 MCP_SERVERS_FILE = os.getenv("MCP_SERVERS_FILE", "")
 
+# Token cost (app/services/usage.py): USD per 1 million tokens. Ollama itself costs nothing per token,
+# so the defaults are a small hosted model's list price: "what this traffic would cost on a paid API".
+# Set your provider's real prices when you switch; 0 and 0 = track tokens only.
+LLM_PRICE_INPUT_PER_MTOK = float(os.getenv("LLM_PRICE_INPUT_PER_MTOK", "0.15"))
+LLM_PRICE_OUTPUT_PER_MTOK = float(os.getenv("LLM_PRICE_OUTPUT_PER_MTOK", "0.60"))
+
 # Qdrant
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6335")
 # v2: new chunk format + nomic task prefixes, so vectors aren't comparable with the old collection

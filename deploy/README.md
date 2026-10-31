@@ -169,6 +169,12 @@ Config files live in [observability/](observability/) and are shared: compose mo
 into ConfigMaps ([observability/kustomization.yaml](observability/kustomization.yaml)). Only Prometheus differs
 (`prometheus.yml` vs `prometheus-k8s.yml`), because the DNS names differ.
 
+**Tokens & cost** ([app/services/usage.py](../backend/app/services/usage.py)): every model call (chat answer, agent
+run, chat title) records the tokens Ollama reports, plus a cost estimate at `LLM_PRICE_INPUT_PER_MTOK` /
+`LLM_PRICE_OUTPUT_PER_MTOK` (USD per million tokens). Totals go to Prometheus. Per user, they go to the `llm_usage`
+table, which Grafana reads through its PostgreSQL data source. They're kept out of Prometheus because a user id
+label would mean one time series per user.
+
 On Kubernetes nothing is public; use port-forwarding:
 
 ```bash

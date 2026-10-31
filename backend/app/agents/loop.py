@@ -16,11 +16,12 @@ from langchain_core.messages import AIMessageChunk, BaseMessage, SystemMessage, 
 from langchain_core.tools import BaseTool
 
 from app.core import metrics
-from app.core.config import AGENT_MAX_STEPS
+from app.core.config import AGENT_MAX_STEPS, AGENT_MODEL
 from app.core.telemetry import span
 from app.prompts.agents import AGENT_PROMPT
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import Message
+from app.services import usage
 from app.services.llm import agent_llm
 
 log = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[di
     by_name = {t.name: t for t in tools}
     with_tools = agent_llm.bind_tools(tools)
     used: list[Document] = []
+    tally = usage.Tally()  # every model step of this answer, tool rounds included
 
     for step in range(AGENT_MAX_STEPS + 1):
         # out of steps: answer with what it has, without tools
@@ -42,6 +44,7 @@ async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[di
                 yield {"type": "token", "text": chunk.content}
         if reply is None:
             break
+        tally.add(reply)
         messages.append(reply)
         if not reply.tool_calls:
             break
@@ -52,6 +55,7 @@ async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[di
             used += _documents(call, result)
             yield {"type": "tool_done", "name": call["name"], "ok": result.status != "error"}
 
+    await usage.record("agent", tally, AGENT_MODEL)
     yield {"type": "sources", "sources": cite(used)}
 
 
