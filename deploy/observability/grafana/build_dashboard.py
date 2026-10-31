@@ -104,8 +104,10 @@ def stat(title, expr, unit, x, w=4, h=4, thresholds=None, desc="", decimals=None
 
 
 def ts(title, targets, unit, x, w=12, h=8, desc="", stack=False, bars=False, overrides=None, min0=True,
-       legend_calcs=("mean", "max"), into=None, links=None, lines=None):
-    """A time series. `lines` (a th(...)) draws dashed threshold lines, e.g. an SLO target or an alert level."""
+       legend_calcs=("mean", "max"), into=None, links=None, lines=None, log=False):
+    """A time series. `lines` (a th(...)) draws dashed threshold lines, e.g. an SLO target or an alert level.
+    Bars are at least one minute wide: per 15 s scrape they turn into a jagged comb. `log` gives a log y axis, for
+    latencies where a few slow outliers (a cold start) would flatten everything else."""
     p = {
         "type": "timeseries", "title": title, "id": _id(), "datasource": PROM, "description": desc,
         "gridPos": {"h": h, "w": w, "x": x, "y": y},
@@ -113,7 +115,7 @@ def ts(title, targets, unit, x, w=12, h=8, desc="", stack=False, bars=False, ove
         "fieldConfig": {
             "defaults": {
                 "unit": unit, "color": {"mode": "palette-classic"}, "noValue": "No data in this time range",
-                **({"min": 0} if min0 else {}),
+                **({"min": 0} if min0 and not log else {}),
                 **({"thresholds": lines} if lines else {}),
                 "custom": {
                     "drawStyle": "bars" if bars else "line", "lineWidth": 2, "fillOpacity": 70 if bars else 22,
@@ -121,6 +123,7 @@ def ts(title, targets, unit, x, w=12, h=8, desc="", stack=False, bars=False, ove
                     "barAlignment": 0, "axisSoftMin": 0,
                     "stacking": {"mode": "normal" if stack else "none", "group": "A"},
                     **({"thresholdsStyle": {"mode": "dashed"}} if lines else {}),
+                    **({"scaleDistribution": {"type": "log", "log": 10}} if log else {}),
                 },
             },
             "overrides": overrides or [],
@@ -134,6 +137,8 @@ def ts(title, targets, unit, x, w=12, h=8, desc="", stack=False, bars=False, ove
     }
     if links:
         p["links"] = links
+    if bars:
+        p["interval"] = "1m"
     (into if into is not None else panels).append(p)
     return p
 
@@ -328,7 +333,10 @@ def canvas(title, nodes, links, queries, units, h=12, desc="", field_thresholds=
     })
 
 
-LAT = th("green", (2, "orange"), (5, "red"))  # seconds, for whole requests
+LAT = th("green", (2, "orange"), (5, "red"))
+PCT = [color("p50.*", "light-blue"), color("p95.*", "purple"), color("p99.*", "dark-purple")]
+# the mean of a percentile means nothing: show where it is now, and its worst
+PCT_LEGEND = ("lastNotNull", "max")  # seconds, for whole requests
 TRACES_LINK = [{"title": "Open slow traces in Explore", "url": "/explore?schemaVersion=1&panes=" + json.dumps(
     {"a": {"datasource": "tempo", "queries": [{"refId": "A", "datasource": TEMPO, "queryType": "traceql",
                                                "query": '{resource.service.name=~"mychatapp-.*" && kind=server && duration > 2s}',
@@ -620,7 +628,7 @@ ts("Latency percentiles (all selected routes)", [
     (q(0.50, "http_request_duration_seconds", sel=APP), "p50 (typical)"),
     (q(0.95, "http_request_duration_seconds", sel=APP), "p95"),
     (q(0.99, "http_request_duration_seconds", sel=APP), "p99 (worst 1%)"),
-], "s", 0, overrides=[color("p50.*", "green"), color("p95", "orange"), color("p99.*", "red")], links=TRACES_LINK,
+], "s", 0, overrides=PCT, legend_calcs=PCT_LEGEND, log=True, links=TRACES_LINK,
    desc="p50: half of requests are faster. p99: only 1 in 100 is slower. "
         "A gap between p50 and p99 means a few users have a much worse experience.")
 bargauge("Slowest routes (p95, selected range)",
@@ -648,7 +656,7 @@ ts("Time to first word vs full answer", [
     (q(0.95, "llm_stream_duration_seconds", "endpoint"), "full answer p95 · {{endpoint}}"),
 ], "s", 12, h=9, desc="First word = how long the user stares at an empty bubble. "
                       "The gap to the full answer is the time spent streaming the text.",
-   overrides=[color("first word.*", "green"), color("full answer.*", "purple")], links=TRACES_LINK)
+   overrides=[color("first word.*", "blue"), color("full answer.*", "purple")], links=TRACES_LINK)
 y += 9
 heatmap("Time to first word heatmap", "llm_time_to_first_token_seconds", "s", 0, scheme="Purples",
         desc="How long each answer took to start, minute by minute. Bright cells at the top = users waiting.")
@@ -656,11 +664,14 @@ heatmap("Full answer heatmap", "llm_stream_duration_seconds", "s", 12, scheme="P
         desc="Time from question to the last word, for every answer.")
 y += 8
 ts("Answers / min", [("sum by (endpoint) (rate(llm_stream_duration_seconds_count[$__rate_interval])) * 60",
-                      "{{endpoint}}")], "short", 0, w=8, bars=True, stack=True)
+                      "{{endpoint}}")], "short", 0, w=8, bars=True, stack=True,
+   overrides=[color("chat", "blue"), color("agent", "purple")],
+   desc="Answers completed per minute: chat = normal answers, agent = agent mode.")
 ts("Document search latency", [(q(0.50, "retrieval_duration_seconds"), "p50"),
                                (q(0.95, "retrieval_duration_seconds"), "p95")], "s", 8, w=8,
-   overrides=[color("p50", "green"), color("p95", "orange")],
-   desc="Embedding the question (Ollama) + vector search (Qdrant).")
+   overrides=PCT, legend_calcs=PCT_LEGEND, log=True, lines=th("transparent", (1, "orange")),
+   desc="Embedding the question (Ollama) + vector search (Qdrant). Log scale: normal searches take ~100 ms, a "
+        "cold embedding model several seconds. Dashed line: 1 s, above which a search is slow.")
 ts("Answered without documents", [
     (("sum(rate(retrieval_no_context_total[$__rate_interval])) "
       "/ clamp_min(sum(rate(retrieval_duration_seconds_count[$__rate_interval])), 1e-9)"), "no matching document")],
@@ -810,7 +821,7 @@ ts("Documents / min by outcome", [("sum by (outcome) (rate(ingest_documents_tota
    overrides=[color("indexed", "green"), color("retry", "orange"), color("failed", "red")],
    desc="indexed = done. retry = a dependency hiccup, it will be tried again. failed = given up.")
 ts("Time per document", [(q(0.50, "ingest_duration_seconds"), "p50"), (q(0.95, "ingest_duration_seconds"), "p95")],
-   "s", 8, w=8, overrides=[color("p50", "green"), color("p95", "orange")],
+   "s", 8, w=8, overrides=PCT, legend_calcs=PCT_LEGEND,
    desc="Download from MinIO + chunk + embed + store, for one document.")
 ts("Chunks indexed / min", [("sum(rate(ingest_chunks_total[$__rate_interval])) * 60", "chunks")], "short", 16, w=8,
    legend_calcs=("mean", "max"))

@@ -5452,7 +5452,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "timeseries",
@@ -5511,7 +5512,6 @@
             "mode": "palette-classic"
           },
           "noValue": "No data in this time range",
-          "min": 0,
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -5525,6 +5525,10 @@
             "stacking": {
               "mode": "none",
               "group": "A"
+            },
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
             }
           }
         },
@@ -5539,7 +5543,7 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "green"
+                  "fixedColor": "light-blue"
                 }
               }
             ]
@@ -5547,14 +5551,14 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "p95"
+              "options": "p95.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "orange"
+                  "fixedColor": "purple"
                 }
               }
             ]
@@ -5569,7 +5573,7 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "red"
+                  "fixedColor": "dark-purple"
                 }
               }
             ]
@@ -5582,7 +5586,7 @@
           "placement": "right",
           "showLegend": true,
           "calcs": [
-            "mean",
+            "lastNotNull",
             "max"
           ],
           "sortBy": "Max",
@@ -5937,7 +5941,7 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "green"
+                  "fixedColor": "blue"
                 }
               }
             ]
@@ -6138,7 +6142,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "",
+      "description": "Answers completed per minute: chat = normal answers, agent = agent mode.",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -6182,7 +6186,38 @@
             }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "chat"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "agent"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "legend": {
@@ -6200,7 +6235,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "timeseries",
@@ -6210,7 +6246,7 @@
         "type": "prometheus",
         "uid": "prometheus"
       },
-      "description": "Embedding the question (Ollama) + vector search (Qdrant).",
+      "description": "Embedding the question (Ollama) + vector search (Qdrant). Log scale: normal searches take ~100 ms, a cold embedding model several seconds. Dashed line: 1 s, above which a search is slow.",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -6248,7 +6284,19 @@
             "mode": "palette-classic"
           },
           "noValue": "No data in this time range",
-          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -6262,6 +6310,13 @@
             "stacking": {
               "mode": "none",
               "group": "A"
+            },
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "scaleDistribution": {
+              "type": "log",
+              "log": 10
             }
           }
         },
@@ -6269,14 +6324,14 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "p50"
+              "options": "p50.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "green"
+                  "fixedColor": "light-blue"
                 }
               }
             ]
@@ -6284,14 +6339,29 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "p95"
+              "options": "p95.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "orange"
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "p99.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-purple"
                 }
               }
             ]
@@ -6304,7 +6374,7 @@
           "placement": "bottom",
           "showLegend": true,
           "calcs": [
-            "mean",
+            "lastNotNull",
             "max"
           ],
           "sortBy": "Max",
@@ -6474,7 +6544,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "row",
@@ -6850,7 +6921,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "timeseries",
@@ -6968,7 +7040,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "row",
@@ -7484,7 +7557,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "timeseries",
@@ -8095,7 +8169,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "row",
@@ -8634,7 +8709,8 @@
           "mode": "multi",
           "sort": "desc"
         }
-      }
+      },
+      "interval": "1m"
     },
     {
       "type": "timeseries",
@@ -8703,14 +8779,14 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "p50"
+              "options": "p50.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "green"
+                  "fixedColor": "light-blue"
                 }
               }
             ]
@@ -8718,14 +8794,29 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "p95"
+              "options": "p95.*"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "orange"
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "p99.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "dark-purple"
                 }
               }
             ]
@@ -8738,7 +8829,7 @@
           "placement": "bottom",
           "showLegend": true,
           "calcs": [
-            "mean",
+            "lastNotNull",
             "max"
           ],
           "sortBy": "Max",
