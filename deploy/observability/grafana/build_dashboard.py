@@ -12,6 +12,7 @@ Layout (top to bottom, most important first):
   2. Traffic & errors (RED: rate, errors, duration)
   3. AI pipeline: where a chat answer's time goes
   3b. Tokens & cost (Prometheus totals + per-user table from PostgreSQL)
+  3c. Guardrails: blocked / flagged, poisoned documents, guard model errors
   4. Document ingestion
   5. Traces: service map + recent requests
   6. Pods & resources (collapsed)
@@ -322,6 +323,32 @@ panels.append({
     "options": {"showHeader": True, "cellHeight": "sm"},
 })
 y += 9
+
+# ======================================================================== 3c. guardrails
+GR = "guardrail_events_total"
+row("Guardrails  ·  what was blocked, and why")
+stat("Blocked", f'sum(increase({GR}{{action="blocked"}}[$__range])) or vector(0)', "short", 0, w=6,
+     color_mode="none", decimals=0,
+     desc="Questions refused, document chunks dropped, tool results and answers withheld. Details (rule, file, "
+          "user) are in the audit log: event=guardrail.blocked.")
+stat("Flagged (monitor mode)", f'sum(increase({GR}{{action="flagged"}}[$__range])) or vector(0)', "short", 6, w=6,
+     color_mode="none", decimals=0,
+     desc="What would have been blocked with GUARDRAILS_MODE=enforce. Use it to check for false positives first.")
+stat("Poisoned document chunks", f'sum(increase({GR}{{check="injection_document"}}[$__range])) or vector(0)',
+     "short", 12, w=6, thresholds=th("green", (1, "red")), decimals=0,
+     desc="Retrievals that dropped a chunk carrying instructions. Not zero = a file in the knowledge base contains "
+          "a prompt injection: find it in the audit log (source=...) and delete it.")
+stat("Guard model errors", f'sum(increase({GR}{{action="error"}}[$__range])) or vector(0)', "short", 18, w=6,
+     thresholds=th("green", (1, "orange")), decimals=0,
+     desc="Content checks skipped because GUARD_MODEL failed. The check fails open: those messages were not "
+          "classified.")
+y += 4
+ts("Guardrail events / hour by check", [(f"sum by (check, action) (rate({GR}[$__rate_interval])) * 3600",
+                                        "{{check}} · {{action}}")], "short", 0, w=24, h=7, bars=True, stack=True,
+   overrides=[color(".*error", "orange")],
+   desc="injection_input = the user's message, injection_document = a retrieved chunk, injection_tool = an agent "
+        "tool result, prompt_leak = the answer repeated the system prompt, content_* = Llama Guard.")
+y += 7
 
 # ======================================================================== 4. ingestion
 row("Document ingestion  ·  background workers")

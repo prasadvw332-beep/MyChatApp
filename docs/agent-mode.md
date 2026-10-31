@@ -12,6 +12,10 @@ All tools come from MCP servers (`app/agents/tools.py`):
 - **external servers**, optional: point `MCP_SERVERS_FILE` at a JSON file like
   [`backend/mcp_servers.example.json`](../backend/mcp_servers.example.json) (web fetch). Servers that fail to start are skipped.
 
+Every tool result is checked for prompt injection before the model sees it. A web page saying "ignore
+your instructions" comes back to the agent as an error instead ([guardrails](guardrails.md)). Tool
+*arguments* are not checked, so only add external servers you trust with what the agent can read.
+
 The model must support tool calling. `llama3.2:1b` works but often picks tools badly or writes a tool
 call as text; pull a bigger one and set `AGENT_MODEL`, e.g. `ollama pull qwen2.5:7b`.
 

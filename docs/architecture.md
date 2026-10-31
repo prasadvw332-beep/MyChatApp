@@ -71,6 +71,10 @@ flowchart TD
     rag["rag/<br/>chunking, retrieval, prompts"] --> clients & repositories
     agents["agents/ + mcp_server/<br/>tool-using agent"] --> rag
     services["services/<br/>logic combining the rest (usage tracking)"] --> repositories
+    guardrails["guardrails/<br/>injection + content safety"] --> clients & services
+    routes --> guardrails
+    rag --> guardrails
+    agents --> guardrails
     repositories["repositories/<br/>the only code that queries PostgreSQL"] --> models["models/<br/>tables"]
     clients["clients/<br/>the only code that talks to Ollama, Qdrant, MinIO"]
     core["core/<br/>config, db, security, errors, logging, metrics, tracing"]
@@ -112,6 +116,7 @@ backend/                    Python API + ingestion workers (one Docker image)
     clients/                llm.py (Ollama), storage.py (MinIO), vector_store.py (Qdrant)
     repositories/           chat_store, doc_store, user_store, usage_store
     services/               usage.py: token + cost tracking
+    guardrails/             injection.py (patterns, fencing, canary), content.py (Llama Guard) (docs/guardrails.md)
   migrations/               Alembic database migrations
   evals/                    RAGAS evaluation dataset and runner (docs/evaluation.md)
   tests/                    no services needed: fakes.py replaces Qdrant/MinIO/Ollama/PostgreSQL

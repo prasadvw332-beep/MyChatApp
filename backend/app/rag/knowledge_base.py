@@ -11,6 +11,7 @@ from app.core import metrics
 from app.core.config import MIN_SCORE
 from app.core.errors import Conflict
 from app.core.telemetry import span
+from app.guardrails import injection
 from app.rag.chunking import chunk
 from app.repositories import doc_store
 
@@ -124,4 +125,5 @@ def retrieve(question: str, k: int = TOP_K) -> list[Document]:
     if not hits or hits[0][1] < MIN_SCORE:
         metrics.retrieval_no_context.inc()
         return []
-    return [doc for doc, _ in hits]
+    # chunks are shared by all users: one carrying instructions must not reach anyone's prompt
+    return injection.screen_documents([doc for doc, _ in hits])

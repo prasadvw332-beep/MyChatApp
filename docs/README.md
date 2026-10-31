@@ -7,6 +7,7 @@
 | [production.md](production.md) | know how errors, logs, health checks, timeouts and restarts behave in production |
 | [observability.md](observability.md) | use Grafana, Prometheus and traces to find out why something is slow or failing |
 | [ingestion.md](ingestion.md) | load thousands of documents with the worker pool |
+| [guardrails.md](guardrails.md) | understand how prompt injection and harmful content are stopped, and how to turn on content safety |
 | [agent-mode.md](agent-mode.md) | understand the tool-using agent and its MCP servers |
 | [evaluation.md](evaluation.md) | measure answer quality with RAGAS |
 | [decisions/](decisions/) | know *why* things are built the way they are |

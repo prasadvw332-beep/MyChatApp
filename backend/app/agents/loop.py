@@ -19,6 +19,7 @@ from app.clients.llm import agent_llm
 from app.core import metrics
 from app.core.config import AGENT_MAX_STEPS, AGENT_MODEL
 from app.core.telemetry import span
+from app.guardrails import injection
 from app.prompts.agents import AGENT_PROMPT
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import Message
@@ -28,7 +29,8 @@ log = logging.getLogger(__name__)
 
 
 async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[dict]:
-    messages: list[BaseMessage] = [SystemMessage(AGENT_PROMPT), *build_messages(history, [])[1:]]
+    system = SystemMessage(injection.with_canary(AGENT_PROMPT))
+    messages: list[BaseMessage] = [system, *build_messages(history, [])[1:]]
     by_name = {t.name: t for t in tools}
     with_tools = agent_llm.bind_tools(tools)
     used: list[Document] = []
@@ -62,6 +64,9 @@ async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[di
 async def _call(tool: BaseTool | None, call: dict) -> ToolMessage:
     with span("agent.tool", tool=call["name"]) as s:
         result = await _invoke(tool, call)
+        # any tool may return text written by someone else (an uploaded file, a web page)
+        if result.status != "error" and injection.withhold_tool_result(call["name"], _text(result)):
+            result = ToolMessage(injection.WITHHELD_TOOL_RESULT, tool_call_id=call["id"], status="error")
         ok = result.status != "error"
         s.set_attribute("ok", ok)
     # a tool name the model made up gets one shared label value, so it can't grow the series count
@@ -96,11 +101,14 @@ def _documents(call: dict, result: ToolMessage) -> list[Document]:
     return []
 
 
-def _json(result: ToolMessage) -> dict:
+def _text(result: ToolMessage) -> str:
     blocks = result.content if isinstance(result.content, list) else [result.content]
-    text = "".join(b if isinstance(b, str) else b.get("text", "") for b in blocks)
+    return "".join(b if isinstance(b, str) else b.get("text", "") for b in blocks)
+
+
+def _json(result: ToolMessage) -> dict:
     try:
-        data = json.loads(text)
+        data = json.loads(_text(result))
     except ValueError:
         return {}
     return data if isinstance(data, dict) else {}

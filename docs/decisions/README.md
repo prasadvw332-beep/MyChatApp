@@ -14,3 +14,4 @@ Records 0001 to 0008 were written on 2026-10-31 to document choices already made
 | 0006 | [Layered backend: clients, repositories, services](0006-layered-backend.md) | 2026-10-31 |
 | 0007 | [Kubernetes: Kustomize base + overlays](0007-kustomize-base-and-overlays.md) | 2026-10-31 |
 | 0008 | [Generate the Grafana dashboard from code](0008-generated-grafana-dashboard.md) | 2026-10-31 |
+| 0009 | [Guardrails: pattern checks always on, Llama Guard optional, fail open](0009-guardrails-heuristics-plus-optional-llama-guard.md) | 2026-10-31 |

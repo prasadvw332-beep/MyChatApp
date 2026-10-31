@@ -155,7 +155,7 @@ async function generate() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        reply.content += decoder.decode(value, { stream: true });
+        applyChatText(decoder.decode(value, { stream: true }), reply);
         repaint();
       }
     }
@@ -181,6 +181,25 @@ async function generate() {
     input.focus();
   }
   if (!reply.ui) autoTitle(c);
+}
+
+// A guardrail withheld the answer (backend/app/guardrails/content.py): the notice replaces it, and
+// with `ui` set it is never resent to the model or copied
+function withhold(reply, notice) {
+  reply.content = notice;
+  reply.ui = "blocked";
+  delete reply.sources;
+}
+
+// /chat streams plain text; a NUL byte means "replace everything so far with what follows"
+export function applyChatText(text, reply) {
+  if (reply.ui === "blocked") {
+    reply.content += text; // the rest of the notice
+    return;
+  }
+  const cut = text.indexOf("\0");
+  if (cut < 0) reply.content += text;
+  else withhold(reply, text.slice(cut + 1));
 }
 
 // /agent/chat streams one JSON event per line (see backend/app/agents/loop.py)
@@ -210,6 +229,8 @@ export function applyAgentEvent(e, reply) {
     if (e.sources.length) reply.sources = e.sources;
   } else if (e.type === "error") {
     reply.content += (reply.content ? "\n\n" : "") + `[${e.detail}]`;
+  } else if (e.type === "withheld") {
+    withhold(reply, e.detail);
   }
 }
 

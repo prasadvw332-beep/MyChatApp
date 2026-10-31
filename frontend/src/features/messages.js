@@ -108,7 +108,7 @@ export function buildSteps(steps) {
 
 function buildRow(m, i) {
   const row = el("div", `row ${m.role === "user" ? "user" : "bot"}`);
-  if (m.ui) row.classList.add(m.ui); // "error" | "stopped"
+  if (m.ui) row.classList.add(m.ui); // "error" | "stopped" | "blocked"
   if (m.role === "assistant" && i === state.chat.messages.length - 1) row.classList.add("last");
   row.dataset.index = i;
 

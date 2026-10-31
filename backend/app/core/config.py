@@ -34,6 +34,18 @@ MCP_SERVERS_FILE = os.getenv("MCP_SERVERS_FILE", "")
 LLM_PRICE_INPUT_PER_MTOK = float(os.getenv("LLM_PRICE_INPUT_PER_MTOK", "0.15"))
 LLM_PRICE_OUTPUT_PER_MTOK = float(os.getenv("LLM_PRICE_OUTPUT_PER_MTOK", "0.60"))
 
+# Guardrails (app/guardrails/, docs/guardrails.md)
+# enforce = block and withhold; monitor = only log, count and audit (to tune before enforcing); off
+GUARDRAILS_MODE = os.getenv("GUARDRAILS_MODE", "enforce").lower()
+if GUARDRAILS_MODE not in ("enforce", "monitor", "off"):
+    raise ValueError(f"GUARDRAILS_MODE must be enforce, monitor or off, not {GUARDRAILS_MODE!r}")
+# Content safety classifier on Ollama, e.g. llama-guard3:1b. Empty = no content check (injection checks still run).
+GUARD_MODEL = os.getenv("GUARD_MODEL", "")
+# Llama Guard 3 hazard categories that are blocked. Left out by default because they hit normal questions
+# about uploaded files: S5 defamation, S6 specialized (legal/medical/financial) advice, S7 privacy (a CV's
+# phone number), S8 intellectual property, S13 elections, S14 code interpreter abuse.
+GUARD_BLOCK_CATEGORIES = set(os.getenv("GUARD_BLOCK_CATEGORIES", "S1,S2,S3,S4,S9,S10,S11,S12").upper().split(","))
+
 # Qdrant
 QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6335")
 # v2: new chunk format + nomic task prefixes, so vectors aren't comparable with the old collection

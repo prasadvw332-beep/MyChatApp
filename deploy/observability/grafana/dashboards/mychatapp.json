@@ -2704,7 +2704,7 @@
     },
     {
       "type": "row",
-      "title": "Document ingestion  \u00b7  background workers",
+      "title": "Guardrails  \u00b7  what was blocked, and why",
       "id": 37,
       "collapsed": false,
       "gridPos": {
@@ -2716,9 +2716,374 @@
       "panels": []
     },
     {
+      "type": "stat",
+      "title": "Blocked",
+      "id": 38,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Questions refused, document chunks dropped, tool results and answers withheld. Details (rule, file, user) are in the audit log: event=guardrail.blocked.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 74
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(guardrail_events_total{action=\"blocked\"}[$__range])) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "\u2013",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Flagged (monitor mode)",
+      "id": 39,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "What would have been blocked with GUARDRAILS_MODE=enforce. Use it to check for false positives first.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 74
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(guardrail_events_total{action=\"flagged\"}[$__range])) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "\u2013",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "none",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Poisoned document chunks",
+      "id": 40,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Retrievals that dropped a chunk carrying instructions. Not zero = a file in the knowledge base contains a prompt injection: find it in the audit log (source=...) and delete it.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 74
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(guardrail_events_total{check=\"injection_document\"}[$__range])) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "\u2013",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Guard model errors",
+      "id": 41,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Content checks skipped because GUARD_MODEL failed. The check fails open: those messages were not classified.",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 74
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(increase(guardrail_events_total{action=\"error\"}[$__range])) or vector(0)",
+          "legendFormat": "__auto",
+          "range": false,
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "noValue": "\u2013",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Guardrail events / hour by check",
+      "id": 42,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "injection_input = the user's message, injection_document = a retrieved chunk, injection_tool = an agent tool result, prompt_leak = the answer repeated the system prompt, content_* = Llama Guard.",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 78
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (check, action) (rate(guardrail_events_total[$__rate_interval])) * 3600",
+          "legendFormat": "{{check}} \u00b7 {{action}}",
+          "range": true,
+          "instant": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "noValue": "No data in this time range",
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "lineWidth": 2,
+            "fillOpacity": 70,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineInterpolation": "smooth",
+            "barAlignment": 0,
+            "axisSoftMin": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Document ingestion  \u00b7  background workers",
+      "id": 43,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 85
+      },
+      "panels": []
+    },
+    {
       "type": "timeseries",
       "title": "Documents / min by outcome",
-      "id": 38,
+      "id": 44,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2728,7 +3093,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 74
+        "y": 86
       },
       "targets": [
         {
@@ -2836,7 +3201,7 @@
     {
       "type": "timeseries",
       "title": "Time per document",
-      "id": 39,
+      "id": 45,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2846,7 +3211,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 74
+        "y": 86
       },
       "targets": [
         {
@@ -2950,7 +3315,7 @@
     {
       "type": "timeseries",
       "title": "Chunks indexed / min",
-      "id": 40,
+      "id": 46,
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -2960,7 +3325,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 74
+        "y": 86
       },
       "targets": [
         {
@@ -3022,20 +3387,20 @@
     {
       "type": "row",
       "title": "Traces  \u00b7  one request in detail",
-      "id": 41,
+      "id": 47,
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 94
       },
       "panels": []
     },
     {
       "type": "nodeGraph",
       "title": "Service map (who calls whom)",
-      "id": 42,
+      "id": 48,
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
@@ -3045,7 +3410,7 @@
         "h": 12,
         "w": 10,
         "x": 0,
-        "y": 83
+        "y": 95
       },
       "targets": [
         {
@@ -3062,7 +3427,7 @@
     {
       "type": "table",
       "title": "Recent requests  \u00b7  click a Trace ID to see its timeline",
-      "id": 43,
+      "id": 49,
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
@@ -3072,7 +3437,7 @@
         "h": 12,
         "w": 14,
         "x": 10,
-        "y": 83
+        "y": 95
       },
       "targets": [
         {
@@ -3146,19 +3511,19 @@
     {
       "type": "row",
       "title": "Pods & resources",
-      "id": 44,
+      "id": 50,
       "collapsed": true,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 107
       },
       "panels": [
         {
           "type": "timeseries",
           "title": "Memory per pod",
-          "id": 45,
+          "id": 51,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -3168,7 +3533,7 @@
             "h": 8,
             "w": 8,
             "x": 0,
-            "y": 96
+            "y": 108
           },
           "targets": [
             {
@@ -3230,7 +3595,7 @@
         {
           "type": "timeseries",
           "title": "CPU per pod (cores)",
-          "id": 46,
+          "id": 52,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -3240,7 +3605,7 @@
             "h": 8,
             "w": 8,
             "x": 8,
-            "y": 96
+            "y": 108
           },
           "targets": [
             {
@@ -3302,7 +3667,7 @@
         {
           "type": "state-timeline",
           "title": "Pod up / down",
-          "id": 47,
+          "id": 53,
           "datasource": {
             "type": "prometheus",
             "uid": "prometheus"
@@ -3311,7 +3676,7 @@
             "h": 8,
             "w": 8,
             "x": 16,
-            "y": 96
+            "y": 108
           },
           "targets": [
             {

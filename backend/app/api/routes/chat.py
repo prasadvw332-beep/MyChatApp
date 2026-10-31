@@ -11,6 +11,8 @@ from app.clients.llm import llm, title_llm
 from app.core import metrics
 from app.core.config import CHAT_MODEL
 from app.core.errors import DependencyUnavailable
+from app.guardrails import check_question
+from app.guardrails.content import WITHHELD, AnswerGuard
 from app.prompts.title import TITLE_SHOTS, TITLE_SYSTEM
 from app.rag import knowledge_base
 from app.rag.answer import build_messages, cite
@@ -51,24 +53,33 @@ async def title(req: ChatRequest):
 @router.post("/chat")
 async def chat(req: ChatRequest):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
-    try:
-        docs = await asyncio.to_thread(knowledge_base.retrieve, question)
-    except Exception as e:
-        raise DependencyUnavailable("Document search") from e
 
+    async def retrieve():
+        try:
+            return await asyncio.to_thread(knowledge_base.retrieve, question)
+        except Exception as e:
+            raise DependencyUnavailable("Document search") from e
+
+    # the safety check calls a model too: run it alongside the search, not before it
+    docs, _ = await asyncio.gather(retrieve(), check_question(question))
     messages = build_messages(req.messages, docs)
     sources = cite(docs)
 
     async def token_stream():
         started, first = time.perf_counter(), True
         tally = usage.Tally()
+        guard = AnswerGuard(question)
         try:
             async for chunk in llm.astream(messages):
                 if first:
                     metrics.llm_first_token.labels("chat").observe(time.perf_counter() - started)
                     first = False
                 tally.add(chunk)  # the token counts arrive with the last chunk
-                yield chunk.content
+                text = chunk.content.replace(WITHHELD, "")  # the marker means something to the frontend
+                if notice := guard.check(text):
+                    yield WITHHELD + notice
+                    return
+                yield text
         except Exception:
             # the headers are already sent, so the error can only go into the text itself
             log.exception("chat stream failed")
@@ -76,6 +87,8 @@ async def chat(req: ChatRequest):
             return
         metrics.llm_stream.labels("chat").observe(time.perf_counter() - started)
         await usage.record("chat", tally, CHAT_MODEL)
+        if notice := await guard.finish():
+            yield WITHHELD + notice
 
     return StreamingResponse(
         token_stream(),

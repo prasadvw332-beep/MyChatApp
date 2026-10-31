@@ -3,22 +3,18 @@
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
+from app.guardrails.injection import fence, with_canary
 from app.prompts.rag import PLAIN_PROMPT, RAG_PROMPT
 from app.schemas.chat import Message
 
 
 def format_context(docs: list[Document]) -> str:
-    return "\n\n".join(
-        f"[{d.metadata.get('source')}"
-        + (f", page {d.metadata['page']}" if "page" in d.metadata else "")
-        + f"]\n{d.page_content}"
-        for d in docs
-    )
+    return "\n\n".join(fence(d.page_content, d.metadata.get("source"), d.metadata.get("page")) for d in docs)
 
 
 def build_messages(history: list[Message], docs: list[Document]) -> list[BaseMessage]:
     system = RAG_PROMPT.format(context=format_context(docs)) if docs else PLAIN_PROMPT
-    messages: list[BaseMessage] = [SystemMessage(system)]
+    messages: list[BaseMessage] = [SystemMessage(with_canary(system))]
     for m in history:
         messages.append(AIMessage(m.content) if m.role == "assistant" else HumanMessage(m.content))
     return messages

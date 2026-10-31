@@ -244,7 +244,7 @@ header { height: 56px; flex: none; display: flex; align-items: center; gap: 4px;
 .row.user .bubble { background: var(--user-bubble); padding: 10px 16px; border-radius: 20px; white-space: pre-wrap; }
 .row.bot .bubble { padding-top: 2px; }
 .row.error .bubble { color: var(--danger); background: var(--danger-soft); padding: 10px 14px; border-radius: 10px; }
-.row.stopped .bubble { color: var(--muted); font-style: italic; }
+.row.stopped .bubble, .row.blocked .bubble { color: var(--muted); font-style: italic; }
 
 .thinking {
   display: inline-block; font-weight: 500;

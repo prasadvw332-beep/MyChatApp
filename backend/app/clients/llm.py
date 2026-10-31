@@ -4,7 +4,7 @@ import httpx
 from langchain_core.embeddings import Embeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
-from app.core.config import AGENT_MODEL, CHAT_MODEL, EMBED_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
+from app.core.config import AGENT_MODEL, CHAT_MODEL, EMBED_MODEL, GUARD_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
 
 
 class PrefixedEmbeddings(Embeddings):
@@ -47,6 +47,9 @@ title_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num
                        client_kwargs=_TIMEOUT)
 # deterministic, so it picks tools consistently
 agent_llm = ChatOllama(model=AGENT_MODEL, base_url=OLLAMA_URL, temperature=0, client_kwargs=_TIMEOUT)
+# content safety classifier (app/guardrails/content.py): answers "safe" or "unsafe\nS1,S10"
+guard_llm = ChatOllama(model=GUARD_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=10,
+                       client_kwargs=_TIMEOUT) if GUARD_MODEL else None
 
 
 def ping() -> None:

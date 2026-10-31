@@ -34,6 +34,16 @@ With `APP_ENV=production` the backend **refuses to start** when `JWT_SECRET` is 
 | `LLM_PRICE_INPUT_PER_MTOK` | `0.15` | USD per 1M input tokens, for the cost estimate (0 = tokens only) |
 | `LLM_PRICE_OUTPUT_PER_MTOK` | `0.60` | USD per 1M output tokens |
 
+## Guardrails
+
+See [guardrails.md](guardrails.md).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GUARDRAILS_MODE` | `enforce` | `enforce` blocks and withholds; `monitor` only counts and audits (to find false positives first); `off` |
+| `GUARD_MODEL` | empty | content safety classifier on Ollama, e.g. `llama-guard3:1b`; empty = no content check (injection checks still run) |
+| `GUARD_BLOCK_CATEGORIES` | `S1,S2,S3,S4,S9,S10,S11,S12` | Llama Guard 3 categories that are blocked ([table](guardrails.md#content-categories)) |
+
 ## Retrieval (Qdrant)
 
 | Variable | Default | Meaning |

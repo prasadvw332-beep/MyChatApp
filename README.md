@@ -16,6 +16,7 @@ and full observability (metrics, traces, token cost).
 | **Chat with your documents** | answers grounded in the most relevant passages, with source chips that open the page; plain chat when no document matches |
 | **Agent mode** | the model chooses tools itself (search, list, read a whole document) over [MCP](docs/agent-mode.md) |
 | **Bulk ingestion** | a queue in PostgreSQL and a pool of workers for thousands of documents, with retries ([ingestion](docs/ingestion.md)) |
+| **Guardrails** | prompt-injection checks on questions, shared documents and agent tool results; system-prompt leak detection; optional Llama Guard content safety ([guardrails](docs/guardrails.md)) |
 | **Accounts** | sign-up/login, per-user chat history, audit log of who did what |
 | **Answer quality** | RAGAS evaluation runs from the UI or CLI ([evaluation](docs/evaluation.md)) |
 | **Observability** | Grafana dashboard, Prometheus metrics, OpenTelemetry traces, token usage and cost per user ([observability](docs/observability.md)) |

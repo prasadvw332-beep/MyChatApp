@@ -38,6 +38,10 @@ llm_cost = Counter("llm_cost_usd_total", "Estimated cost at the configured per-t
 llm_speed = Histogram("llm_output_tokens_per_second", "Generation speed reported by the model server", ["model"],
                       buckets=(1, 2, 5, 10, 20, 30, 50, 75, 100, 150, 200, 300))
 
+# Guardrails (app/guardrails/). check = injection_input | injection_document | injection_tool | prompt_leak |
+# content_input | content_output; action = blocked | flagged (GUARDRAILS_MODE=monitor) | error (guard model failed)
+guardrail_events = Counter("guardrail_events_total", "Guardrail checks that found something", ["check", "action"])
+
 # Retrieval
 retrieval_duration = Histogram("retrieval_duration_seconds", "Embedding the question + vector search")
 retrieval_no_context = Counter("retrieval_no_context_total", "Questions where no chunk passed MIN_SCORE")

@@ -16,6 +16,10 @@ Work on feature branches, waiting for review and merge into `main` (in this orde
 - **LLM token and cost tracking**: tokens per call (chat, agent, title), cost at configurable prices,
   generation speed; per-user usage in PostgreSQL (`llm_usage`), "Tokens & cost" in Grafana.
   `feature/llm-usage-tracking`
+- **Guardrails**: prompt-injection checks on the question, on retrieved chunks (shared by all users) and
+  on agent tool results; chunks fenced as data in the prompt; a canary marker that withholds an answer
+  leaking the system prompt; optional Llama Guard content safety (`GUARD_MODEL`); `monitor` mode;
+  "Guardrails" row in Grafana. `feature/guardrails`
 - Frontend **ESLint** and **tests** (Vitest + jsdom, including a smoke test of the whole app). `refactor/frontend-modules`
 - **Repository tooling**: Makefile, pre-commit hooks, `.editorconfig`, `.gitattributes`, this changelog.
   `chore/repo-hygiene`

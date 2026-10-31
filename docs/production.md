@@ -14,6 +14,7 @@ What the backend does to be safe and debuggable in production. The settings invo
 | Migrations | Run at startup under a PostgreSQL advisory lock, so several replicas starting together migrate exactly once |
 | Metrics | Prometheus metrics on a separate port (`:9100`), never reachable through nginx; see [observability.md](observability.md) |
 | Traces | OpenTelemetry: one trace per request and per ingested document, with every SQL query and Ollama/Qdrant call; the trace id is on every log line |
+| Guardrails | Prompt-injection checks on questions, retrieved chunks and agent tool results; a canary catches a leaked system prompt; optional Llama Guard content safety, which fails open (see [guardrails.md](guardrails.md)) |
 | Token usage | Every model call's tokens and estimated cost, per user, in PostgreSQL and Prometheus; recording never fails a request |
 | Restarts | nginx re-resolves the backend's address every 10 s, so a recreated backend doesn't cause 502s |
 | Shutdown | Workers finish the current document on SIGTERM; Kubernetes gives them 5 minutes |

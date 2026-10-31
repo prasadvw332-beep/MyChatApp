@@ -38,6 +38,7 @@ With `make up` (docker compose):
    questions answered without documents, agent tool calls.
 4. **Tokens & cost**: tokens per minute, estimated cost per feature, tokens per answer, generation speed,
    and *usage by user* (from PostgreSQL).
+   Then **Guardrails**: blocked and flagged events, poisoned document chunks, guard model errors.
 5. **Document ingestion**: documents indexed / retried / failed, time per document.
 6. **Traces**: service map (who calls whom) and recent requests.
 7. **Pods & resources** (collapsed): memory, CPU, up/down per pod.
@@ -74,6 +75,7 @@ All defined in [backend/app/core/metrics.py](../backend/app/core/metrics.py):
 | `retrieval_duration_seconds` | | embedding + vector search |
 | `retrieval_no_context_total` | | questions where no chunk passed `MIN_SCORE` |
 | `agent_tool_calls_total` | tool, ok | |
+| `guardrail_events_total` | check, action (blocked, flagged, error) | what the [guardrails](guardrails.md) found |
 | `ingest_documents_total` | outcome (indexed, retry, failed) | |
 | `ingest_duration_seconds`, `ingest_chunks_total` | | per document |
 

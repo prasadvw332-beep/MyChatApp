@@ -42,6 +42,12 @@ class InvalidInput(AppError):
     status, code, message = 422, "invalid_input", "The request is not valid."
 
 
+class Blocked(AppError):
+    """A guardrail refused the request (app/guardrails/). The message tells the user why, never which rule."""
+
+    status, code, message = 400, "blocked", "This message can't be answered."
+
+
 class DependencyUnavailable(AppError):
     """A backing service (Ollama, Qdrant, MinIO, PostgreSQL) failed. Raise it `from` the original error."""
 

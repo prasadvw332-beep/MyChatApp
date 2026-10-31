@@ -1,7 +1,7 @@
 // Pure helpers: no DOM interaction, no backend.
 import { describe, expect, it } from "vitest";
 import { chatKey, groupLabel } from "../src/features/chats.js";
-import { applyAgentEvent } from "../src/features/composer.js";
+import { applyAgentEvent, applyChatText } from "../src/features/composer.js";
 import { fmtSize } from "../src/features/documents.js";
 import { extOf } from "../src/ui/icons.js";
 
@@ -63,5 +63,22 @@ describe("applyAgentEvent", () => {
     applyAgentEvent({ type: "error", detail: "model stopped" }, reply);
     expect(reply.steps[0].state).toBe("failed");
     expect(reply.content).toBe("Partial\n\n[model stopped]");
+  });
+
+  it("replaces a withheld answer and its sources with the notice", () => {
+    const reply = { content: "Something bad", steps: [], sources: [{ source: "x.pdf" }] };
+    applyAgentEvent({ type: "withheld", detail: "This answer was withheld." }, reply);
+    expect(reply).toEqual({ content: "This answer was withheld.", steps: [], ui: "blocked" });
+  });
+});
+
+describe("applyChatText", () => {
+  it("appends text, and a NUL byte replaces the answer with what follows", () => {
+    const reply = { content: "", sources: [{ source: "x.pdf" }] };
+    applyChatText("My marker ", reply);
+    expect(reply.content).toBe("My marker ");
+    applyChatText("is\0This answer ", reply);
+    applyChatText("was withheld.", reply); // the notice may arrive in pieces
+    expect(reply).toEqual({ content: "This answer was withheld.", ui: "blocked" });
   });
 });
