@@ -1,0 +1,26 @@
+# Prometheus for docker-compose. Kubernetes uses prometheus-k8s.yml (same jobs, Kubernetes DNS names).
+#
+# Prometheus PULLS: every 15s it asks each target for /metrics on port 9100 (app/core/metrics.py).
+# dns_sd_configs looks the name up and scrapes every IP it gets back. In compose a service name
+# resolves to all of its replicas, so the 3 workers are 3 targets without listing them.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: backend
+    dns_sd_configs:
+      - names: [backend]
+        type: A
+        port: 9100
+
+  - job_name: worker
+    dns_sd_configs:
+      - names: [worker]
+        type: A
+        port: 9100
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]

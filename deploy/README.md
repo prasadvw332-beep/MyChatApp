@@ -40,6 +40,7 @@
 | `k8s/qdrant, minio, ollama.yaml` | PVC + Deployment + Service | Stateful helpers |
 | `k8s/ollama.yaml` (bottom) | Job | Downloads the models once, then exits |
 | `k8s/kustomization.yaml` | — | Lists all files so one command applies them |
+| `observability/` | ConfigMaps + Deployments | Prometheus, Grafana, Tempo, OTel Collector (see [Observability](#observability-prometheus-opentelemetry-grafana)) |
 
 **Image vs container vs pod:** an *image* is the packaged app (a template). A *container* is a running image.
 A *pod* is Kubernetes' smallest unit: one (or a few) containers that share an IP.
@@ -143,7 +144,50 @@ kubectl create secret docker-registry ghcr -n mychatapp \
 
 To turn on the deploy job (once you have a cluster), add these in GitHub → Settings → Secrets and variables → Actions:
 - Variable `DEPLOY_ENABLED` = `true`
-- Secrets `AWS_DEPLOY_ROLE_ARN`, `DATABASE_URL`, `JWT_SECRET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `POSTGRES_PASSWORD`
+- Secrets `AWS_DEPLOY_ROLE_ARN`, `DATABASE_URL`, `JWT_SECRET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `POSTGRES_PASSWORD`, `GRAFANA_ADMIN_PASSWORD`
+
+## Observability: Prometheus, OpenTelemetry, Grafana
+
+```
+ backend pods ─┬─ :9100/metrics ◄──── scraped every 15s ──── Prometheus ◄─┐
+ worker pods  ─┤                                                          ├── Grafana  (dashboards, Explore)
+               └─ spans (OTLP/HTTP :4318) ──► OTel Collector ──► Tempo ◄──┘
+```
+
+| Piece | What it answers | Where |
+|---|---|---|
+| **Prometheus** | *How much, how fast, how often?* Numbers over time: requests/s, p95 latency, errors, LLM time to first token, documents indexed/min | http://localhost:9090 |
+| **OpenTelemetry** | *What happened in this one request?* A trace per request (or per ingested document), with a span for every PostgreSQL query and every call to Ollama and Qdrant | the SDK in the backend ([app/core/telemetry.py](../backend/app/core/telemetry.py)) + the Collector |
+| **Tempo** | Stores the traces | queried through Grafana |
+| **Grafana** | Shows both: the **MyChatApp** dashboard, and Explore → Tempo for traces | http://localhost:3000 (anonymous viewer; `admin` / `GRAFANA_ADMIN_PASSWORD` to edit) |
+
+All metrics are defined in [app/core/metrics.py](../backend/app/core/metrics.py). They are served on port **9100**, not
+8000: nginx forwards all of `/api/*` to the backend, so a `/metrics` route there would be public.
+Tracing is off unless `OTEL_EXPORTER_OTLP_ENDPOINT` is set (compose and the ConfigMap set it).
+
+Config files live in [observability/](observability/) and are shared: compose mounts them, Kubernetes turns them
+into ConfigMaps ([observability/kustomization.yaml](observability/kustomization.yaml)). Only Prometheus differs
+(`prometheus.yml` vs `prometheus-k8s.yml`), because the DNS names differ.
+
+On Kubernetes nothing is public; use port-forwarding:
+
+```bash
+kubectl port-forward svc/grafana 3000:3000 -n mychatapp
+kubectl port-forward svc/prometheus 9090:9090 -n mychatapp
+```
+
+### From a slow request to its cause
+
+1. The dashboard shows p95 latency of `/chat` going up.
+2. Its trace: Grafana → Explore → Tempo → search `{ name = "POST /chat" && duration > 5s }`. The span tree shows
+   whether the time went to `rag.retrieve` (embedding + Qdrant), the PostgreSQL queries, or the Ollama call.
+3. Its log lines: every log line written during a traced request carries the trace id
+   (`"trace_id": ...` in production JSON, `t=1a2b3c4d` in dev text). Search the logs for it
+   (`kubectl logs deploy/backend -n mychatapp | grep <trace id>`). And the other way around: the `request_id` from a
+   user's error message is a span attribute, so `{ span.request_id = "..." }` in Tempo finds the trace.
+
+The dashboard lives in git: edit [mychatapp.json](observability/grafana/dashboards/mychatapp.json)
+(or save a copy in the UI, edit that, and export its JSON over this file), then restart Grafana. Changes made directly in the UI to the provisioned dashboard can't be saved.
 
 ## Notes
 

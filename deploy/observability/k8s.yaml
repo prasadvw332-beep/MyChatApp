@@ -1,0 +1,327 @@
+# The observability stack on Kubernetes: the same four services as in docker-compose.yml.
+# Applied together with the app by `kubectl apply -k deploy/k8s/` (it includes ../observability).
+# The config files are turned into ConfigMaps by kustomization.yaml in this folder.
+#
+#   Grafana:     kubectl port-forward svc/grafana 3000:3000 -n mychatapp      -> http://localhost:3000
+#   Prometheus:  kubectl port-forward svc/prometheus 9090:9090 -n mychatapp   -> http://localhost:9090
+#
+# None of them is exposed to the internet (all ClusterIP). On AWS you would put Grafana behind an
+# Ingress with login, or use the managed versions (Amazon Managed Prometheus / Managed Grafana).
+
+# ---------- headless Services: let Prometheus find every app pod ----------
+# clusterIP: None = no load balancing; the DNS name returns each pod's IP (see prometheus-k8s.yml)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-metrics
+  namespace: mychatapp
+spec:
+  clusterIP: None
+  selector:
+    app: backend
+  ports:
+    - name: metrics
+      port: 9100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-metrics
+  namespace: mychatapp
+spec:
+  clusterIP: None
+  selector:
+    app: worker
+  ports:
+    - name: metrics
+      port: 9100
+---
+# ---------- OpenTelemetry Collector ----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  namespace: mychatapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector-contrib:0.130.0
+          args: ["--config=/etc/otelcol/config.yaml"]
+          ports:
+            - containerPort: 4318   # OTLP/HTTP from the apps
+            - containerPort: 4317   # OTLP/gRPC
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otelcol
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi        # memory_limiter in the config keeps it below this
+      volumes:
+        - name: config
+          configMap:
+            name: otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: mychatapp
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-http
+      port: 4318
+    - name: otlp-grpc
+      port: 4317
+---
+# ---------- Tempo (traces) ----------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tempo-data
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  namespace: mychatapp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # ReadWriteOnce disk, like qdrant.yaml
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      securityContext:
+        fsGroup: 10001   # Tempo runs as user 10001: make the disk writable for it
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.8.1
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - containerPort: 3200   # queries from Grafana
+            - containerPort: 4317   # spans from the collector
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+            - name: storage
+              mountPath: /var/tempo
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: tempo-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: tempo-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  namespace: mychatapp
+spec:
+  selector:
+    app: tempo
+  ports:
+    - name: http
+      port: 3200
+    - name: otlp-grpc
+      port: 4317
+---
+# ---------- Prometheus (metrics) ----------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-data
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: mychatapp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      securityContext:
+        fsGroup: 65534   # the image runs as "nobody"
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.5.0
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --storage.tsdb.retention.time=15d
+            - --web.enable-remote-write-receiver   # Tempo writes its service-graph metrics here
+            - --enable-feature=exemplar-storage
+          ports:
+            - containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: storage
+              mountPath: /prometheus
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: storage
+          persistentVolumeClaim:
+            claimName: prometheus-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: mychatapp
+spec:
+  selector:
+    app: prometheus
+  ports:
+    - port: 9090
+---
+# ---------- Grafana (dashboards) ----------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-data
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: mychatapp
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      securityContext:
+        fsGroup: 472     # the grafana user
+      containers:
+        - name: grafana
+          image: grafana/grafana:12.1.0
+          ports:
+            - containerPort: 3000
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-secrets    # deploy/k8s/secret.yaml (CI creates it from GitHub Secrets)
+                  key: GRAFANA_ADMIN_PASSWORD
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Viewer
+            - name: GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH
+              value: /var/lib/grafana/dashboards/mychatapp.json
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+          volumeMounts:
+            - name: storage
+              mountPath: /var/lib/grafana
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: dashboard-providers
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: storage
+          persistentVolumeClaim:
+            claimName: grafana-data
+        - name: datasources
+          configMap:
+            name: grafana-datasources
+        - name: dashboard-providers
+          configMap:
+            name: grafana-dashboard-providers
+        - name: dashboards
+          configMap:
+            name: grafana-dashboards
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: mychatapp
+spec:
+  selector:
+    app: grafana
+  ports:
+    - port: 3000

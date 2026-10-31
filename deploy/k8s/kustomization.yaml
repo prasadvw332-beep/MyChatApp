@@ -17,3 +17,5 @@ resources:
   - worker-deployment.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
+  # Prometheus, Grafana, Tempo and the OpenTelemetry Collector (with their config files)
+  - ../observability

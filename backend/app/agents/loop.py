@@ -15,7 +15,9 @@ from langchain_core.documents import Document
 from langchain_core.messages import AIMessageChunk, BaseMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
+from app.core import metrics
 from app.core.config import AGENT_MAX_STEPS
+from app.core.telemetry import span
 from app.prompts.agents import AGENT_PROMPT
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import Message
@@ -54,6 +56,16 @@ async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[di
 
 
 async def _call(tool: BaseTool | None, call: dict) -> ToolMessage:
+    with span("agent.tool", tool=call["name"]) as s:
+        result = await _invoke(tool, call)
+        ok = result.status != "error"
+        s.set_attribute("ok", ok)
+    # a tool name the model made up gets one shared label value, so it can't grow the series count
+    metrics.agent_tool_calls.labels(call["name"] if tool else "unknown", str(ok).lower()).inc()
+    return result
+
+
+async def _invoke(tool: BaseTool | None, call: dict) -> ToolMessage:
     """Run one tool call. Failures go back to the model as an error result, so it can recover."""
     if tool is None:
         return ToolMessage(f"There is no tool named {call['name']!r}.", tool_call_id=call["id"], status="error")

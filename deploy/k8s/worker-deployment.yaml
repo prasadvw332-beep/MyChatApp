@@ -3,7 +3,7 @@
 #
 # Same image as the backend, different command. Notice what is NOT here:
 #   - no Service: workers receive no traffic, they PULL work from the queue
-#   - no ports, no readiness probe: nothing connects to them
+#   - no readiness probe, and only one port: Prometheus scraping metrics (headless Service worker-metrics)
 #
 # Scale up or down at any time; the queue makes sure no document is processed twice:
 #   kubectl scale deploy/worker --replicas=5 -n mychatapp
@@ -32,6 +32,9 @@ spec:
           image: mychatapp-backend:1.0
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "app.ingestion.worker"]
+          ports:
+            - containerPort: 9100
+              name: metrics
           envFrom:
             - configMapRef:
                 name: backend-config
@@ -40,6 +43,8 @@ spec:
           env:
             - name: EMBED_BATCH_SIZE
               value: "64"
+            - name: OTEL_SERVICE_NAME
+              value: mychatapp-worker
           resources:
             requests:
               cpu: 250m          # PDF text extraction and chunking run here

@@ -13,7 +13,7 @@ import signal
 import socket
 import time
 
-from app.core import config
+from app.core import config, metrics, telemetry
 from app.core.config import INGEST_MAX_ATTEMPTS
 from app.core.logging import set_request_id, setup_logging
 from app.ingestion import queue
@@ -27,6 +27,7 @@ NAME = os.getenv("HOSTNAME") or socket.gethostname()  # the pod name in Kubernet
 IDLE_SECONDS = 2  # how long to wait before asking again when there is nothing to claim
 
 _stopping = False
+_FAIL_OUTCOME = {"queued": "retry", "failed": "failed"}  # queue.fail()'s new status -> metric label
 
 
 def _stop(signum, _frame) -> None:
@@ -36,8 +37,16 @@ def _stop(signum, _frame) -> None:
 
 
 def process(doc) -> None:
+    # one trace per document: its Ollama, Qdrant and PostgreSQL calls are the child spans
+    with telemetry.span("ingest.document", doc_id=doc.doc_id, filename=doc.filename, attempt=doc.attempts,
+                        batch_id=doc.batch_id):
+        _process(doc)
+
+
+def _process(doc) -> None:
     if doc.attempts > INGEST_MAX_ATTEMPTS:  # its earlier workers died or ran past the lease
         queue.fail(doc, doc.error or "Gave up: processing never completed.", retry=False)
+        metrics.ingest_documents.labels("failed").inc()
         return
     started = time.monotonic()
     set_request_id(f"doc-{doc.doc_id[:12]}")  # every log line about this document carries its id
@@ -46,9 +55,12 @@ def process(doc) -> None:
     except UnreadableDocument as e:  # retrying won't change that
         log.warning("failed %s: %s", doc.filename, e)
         queue.fail(doc, str(e), retry=False)
+        metrics.ingest_documents.labels("failed").inc()
         return
     except Exception as e:  # Ollama/Qdrant/MinIO hiccup: try again later
         status = queue.fail(doc, f"{type(e).__name__}: {e}")
+        if outcome := _FAIL_OUTCOME.get(status):  # not counted: deleted while we worked on it
+            metrics.ingest_documents.labels(outcome).inc()
         log.warning("attempt %d/%d failed for %s (%s): %s",
                     doc.attempts, INGEST_MAX_ATTEMPTS, doc.filename, status, e)
         return
@@ -57,12 +69,17 @@ def process(doc) -> None:
         return
     for old in queue.older_versions(doc):
         knowledge_base.delete_document(old)
+    metrics.ingest_documents.labels("indexed").inc()
+    metrics.ingest_duration.observe(time.monotonic() - started)
+    metrics.ingest_chunks.inc(chunks)
     log.info("indexed %s: %d chunks in %.1fs (batch %s)", doc.filename, chunks, time.monotonic() - started, doc.batch_id)
 
 
 def main() -> None:
     setup_logging()
     config.validate()
+    telemetry.setup_tracing("mychatapp-worker")
+    metrics.start_server()
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     log.info("worker %s started", NAME)
@@ -78,6 +95,7 @@ def main() -> None:
             # picked up again once its lease expires.
             log.exception("worker loop error: %s", e)
             time.sleep(5)
+    telemetry.shutdown()
     log.info("worker %s stopped", NAME)
 
 

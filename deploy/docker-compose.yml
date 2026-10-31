@@ -1,6 +1,6 @@
 # Run the whole app with ONE command (from the project root):
 #   docker compose -f deploy/docker-compose.yml up --build
-# Then open http://localhost:8080
+# Then open http://localhost:8080   (Grafana: http://localhost:3000, Prometheus: http://localhost:9090)
 #
 # Compose is the "small brother" of Kubernetes: it runs several containers on one
 # machine and connects them on a private network where each service name
@@ -31,6 +31,9 @@ services:
       MINIO_SECRET_KEY: minioadmin123
       CORS_ORIGINS: http://localhost:8080
       JWT_SECRET: change-me-to-a-long-random-string
+      # traces -> the collector (see "observability" below); metrics are scraped from port 9100
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: mychatapp-backend
     depends_on:
       postgres:
         condition: service_healthy   # wait until Postgres accepts connections
@@ -55,6 +58,8 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_SERVICE_NAME: mychatapp-worker
     stop_grace_period: 5m   # time to finish the current document on `docker compose down`
     depends_on:
       - backend             # the backend runs the database migrations at startup
@@ -107,9 +112,73 @@ services:
       - ollama
     restart: "no"
 
+  # ---------- observability (configs in deploy/observability/) ----------
+  # metrics: backend/worker :9100/metrics  <- scraped by Prometheus  -> Grafana
+  # traces:  backend/worker --OTLP-->  otel-collector  -> Tempo       -> Grafana
+  # Versions are pinned: a dashboard or config that works today keeps working after a rebuild.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.130.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      - tempo
+
+  # Tempo runs as user 10001, but a new named volume belongs to root: hand it over once.
+  tempo-init:
+    image: &tempo-image grafana/tempo:2.8.1
+    user: root
+    entrypoint: ["chown", "-R", "10001:10001", "/var/tempo"]
+    volumes:
+      - tempo-data:/var/tempo
+    restart: "no"
+
+  tempo:
+    image: *tempo-image
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    depends_on:
+      tempo-init:
+        condition: service_completed_successfully
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-remote-write-receiver   # Tempo writes its service-graph metrics here
+      - --enable-feature=exemplar-storage    # links from a latency spike to an example trace
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}   # log in as admin to edit
+      GF_AUTH_ANONYMOUS_ENABLED: "true"                              # everyone else can look
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/mychatapp.json
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+
 # Named volumes: managed by Docker, kept until you run `docker compose down -v`
 volumes:
   postgres-data:
   qdrant-data:
   minio-data:
   ollama-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:

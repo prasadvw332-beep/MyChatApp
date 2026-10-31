@@ -1,0 +1,30 @@
+# Kubernetes side of this folder; included by deploy/k8s/kustomization.yaml (resources: ../observability).
+# docker-compose mounts the same config files directly, so there is one copy of each.
+#
+# configMapGenerator turns each file into a ConfigMap. Its name gets a hash of the contents
+# (prometheus-config-7g2k...), and kustomize rewrites the references in k8s.yaml to match: editing
+# a config file therefore rolls the pods that use it, instead of them keeping the old config.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: mychatapp
+resources:
+  - k8s.yaml
+configMapGenerator:
+  - name: otel-collector-config
+    files:
+      - config.yaml=otel-collector.yaml
+  - name: tempo-config
+    files:
+      - tempo.yaml
+  - name: prometheus-config
+    files:
+      - prometheus.yml=prometheus-k8s.yml
+  - name: grafana-datasources
+    files:
+      - grafana/provisioning/datasources/datasources.yaml
+  - name: grafana-dashboard-providers
+    files:
+      - grafana/provisioning/dashboards/dashboards.yaml
+  - name: grafana-dashboards
+    files:
+      - grafana/dashboards/mychatapp.json

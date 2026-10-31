@@ -7,6 +7,13 @@ APP_ENV = os.getenv("APP_ENV", "development").lower()
 IS_PRODUCTION = APP_ENV == "production"
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
+# Observability (app/core/metrics.py, app/core/telemetry.py)
+# Prometheus scrapes this port; it is separate from the API so nginx never exposes it. 0 = off.
+METRICS_PORT = int(os.getenv("METRICS_PORT", "9100"))
+# OTLP/HTTP endpoint of the OpenTelemetry Collector, e.g. http://otel-collector:4318. Empty = no tracing.
+OTEL_EXPORTER_OTLP_ENDPOINT = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+OTEL_SERVICE_NAME = os.getenv("OTEL_SERVICE_NAME", "")  # default: chosen by the process (backend / worker)
+
 # Ollama
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 CHAT_MODEL = os.getenv("CHAT_MODEL", "llama3.2:1b")

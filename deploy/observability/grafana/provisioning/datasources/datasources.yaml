@@ -1,0 +1,29 @@
+# Grafana reads this at startup, so the data sources exist without clicking through the UI.
+# The fixed uids are what the dashboard JSON refers to.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      # service map + request metrics from Tempo's metrics generator (written into Prometheus)
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      tracesToMetrics:
+        datasourceUid: prometheus
+      search:
+        hide: false

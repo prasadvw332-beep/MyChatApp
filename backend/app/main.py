@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.core import config, errors
+from app.core import config, errors, metrics, telemetry
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware
 
@@ -22,6 +22,7 @@ log = logging.getLogger("app")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    metrics.start_server()
     try:
         init_db()
         added = await asyncio.to_thread(knowledge_base.sync_documents)
@@ -36,9 +37,11 @@ async def lifespan(app: FastAPI):
         app.state.agent_tools = tools
         log.info("MyChatApp API started (env=%s, agent tools: %s)", config.APP_ENV, ", ".join(t.name for t in tools))
         yield
+    telemetry.shutdown()
 
 
 app = FastAPI(title="MyChatApp API", lifespan=lifespan)
+telemetry.setup_tracing("mychatapp-backend", app)
 errors.register(app)
 # inside CORS (added first = inner), so even a crash's 500 carries CORS headers the browser can read
 app.add_middleware(RequestContextMiddleware)

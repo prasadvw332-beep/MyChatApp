@@ -26,3 +26,6 @@ data:
   CORS_ORIGINS: "http://localhost"
   SESSION_DAYS: "7"
   COOKIE_SECURE: "false"   # set "true" once the site is served over https
+  # traces go to the collector (deploy/observability/); metrics are scraped from port 9100
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+  METRICS_PORT: "9100"

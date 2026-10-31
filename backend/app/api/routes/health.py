@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.core import db
+from app.core.telemetry import untraced
 from app.services import llm, storage
 from app.services.vector_store import store
 
@@ -34,7 +35,8 @@ def health():
 async def _check(ping) -> dict:
     started = time.perf_counter()
     try:
-        await asyncio.wait_for(asyncio.to_thread(ping), CHECK_TIMEOUT)
+        with untraced():  # the probe itself isn't traced; its pings would show up as orphan traces
+            await asyncio.wait_for(asyncio.to_thread(ping), CHECK_TIMEOUT)
         result = {"ok": True}
     except TimeoutError:
         result = {"ok": False, "error": "timeout"}

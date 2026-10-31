@@ -1,0 +1,26 @@
+# Prometheus for Kubernetes. Same jobs as prometheus.yml (compose).
+#
+# The names are headless Services (k8s.yaml): unlike a normal Service, which hides its pods behind
+# one IP, a headless Service's DNS name returns every pod's IP, so Prometheus scrapes each pod.
+# (The alternative, kubernetes_sd_configs, needs RBAC permission to watch the Kubernetes API.)
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: backend
+    dns_sd_configs:
+      - names: [backend-metrics.mychatapp.svc.cluster.local]
+        type: A
+        port: 9100
+
+  - job_name: worker
+    dns_sd_configs:
+      - names: [worker-metrics.mychatapp.svc.cluster.local]
+        type: A
+        port: 9100
+
+  - job_name: prometheus
+    static_configs:
+      - targets: [localhost:9090]

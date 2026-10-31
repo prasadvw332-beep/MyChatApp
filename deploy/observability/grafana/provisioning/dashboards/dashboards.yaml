@@ -1,0 +1,12 @@
+# Load every dashboard JSON from the folder below (mounted from deploy/observability/grafana/dashboards).
+# Edit the JSON in git, not in the UI: UI changes to a provisioned dashboard can't be saved.
+apiVersion: 1
+
+providers:
+  - name: mychatapp
+    folder: MyChatApp
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

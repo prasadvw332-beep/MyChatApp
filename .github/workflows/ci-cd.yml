@@ -136,6 +136,7 @@ jobs:
           MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
           MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
         run: |
           kubectl create namespace mychatapp --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret generic backend-secrets -n mychatapp \
@@ -146,6 +147,9 @@ jobs:
             --from-literal=MINIO_ROOT_USER="$MINIO_ACCESS_KEY" \
             --from-literal=MINIO_ROOT_PASSWORD="$MINIO_SECRET_KEY" \
             --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic grafana-secrets -n mychatapp \
+            --from-literal=GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # Point the manifests at the images we just pushed (instead of the local

@@ -45,6 +45,8 @@ spec:
 
           ports:
             - containerPort: 8000
+            - containerPort: 9100   # Prometheus metrics (via the headless Service backend-metrics)
+              name: metrics
 
           # Environment variables: every key from the ConfigMap and the Secret.
           envFrom:
@@ -52,6 +54,9 @@ spec:
                 name: backend-config
             - secretRef:
                 name: backend-secrets
+          env:
+            - name: OTEL_SERVICE_NAME   # how this pod's traces are labelled in Grafana
+              value: mychatapp-backend
 
           # Requests = what the scheduler reserves on a node for this pod.
           # Limits   = the hard cap; above the memory limit the container is killed (OOMKilled).

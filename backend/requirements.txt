@@ -20,6 +20,8 @@ argon2-cffi==25.1.0
     #   pwdlib
 argon2-cffi-bindings==26.1.0
     # via argon2-cffi
+asgiref==3.13.0
+    # via opentelemetry-instrumentation-asgi
 attrs==26.1.0
     # via
     #   jsonschema
@@ -44,6 +46,8 @@ distro==1.9.0
     # via langsmith
 fastapi==0.161.1
     # via backend
+googleapis-common-protos==1.76.0
+    # via opentelemetry-exporter-otlp-proto-http
 grpcio==1.84.1
     # via qdrant-client
 h11==0.16.0
@@ -121,18 +125,73 @@ numpy==2.5.4
     # via qdrant-client
 ollama==0.6.3
     # via langchain-ollama
-opentelemetry-api==1.45.1
-    # via fastapi
+opentelemetry-api==1.45.2
+    # via
+    #   fastapi
+    #   opentelemetry-exporter-http-transport
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
+opentelemetry-exporter-http-transport==0.66b2
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-common==0.66b2
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-common==1.45.2
+    # via opentelemetry-exporter-otlp-proto-http
+opentelemetry-exporter-otlp-proto-http==1.45.2
+    # via backend
+opentelemetry-instrumentation==0.66b2
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
+opentelemetry-instrumentation-asgi==0.66b2
+    # via opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-fastapi==0.66b2
+    # via backend
+opentelemetry-instrumentation-httpx==0.66b2
+    # via backend
+opentelemetry-proto==1.45.2
+    # via
+    #   opentelemetry-exporter-otlp-proto-common
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-sdk==1.45.2
+    # via
+    #   backend
+    #   opentelemetry-exporter-otlp-common
+    #   opentelemetry-exporter-otlp-proto-http
+opentelemetry-semantic-conventions==0.66b2
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
+    #   opentelemetry-sdk
+opentelemetry-util-http==0.66b2
+    # via
+    #   opentelemetry-instrumentation-asgi
+    #   opentelemetry-instrumentation-fastapi
+    #   opentelemetry-instrumentation-httpx
 orjson==3.13.0 ; platform_python_implementation != 'PyPy'
     # via langsmith
 packaging==26.3
     # via
     #   langchain-core
     #   langsmith
+    #   opentelemetry-instrumentation
 portalocker==4.4.1
     # via qdrant-client
+prometheus-client==0.26.0
+    # via backend
 protobuf==7.36.2
-    # via qdrant-client
+    # via
+    #   googleapis-common-protos
+    #   opentelemetry-proto
+    #   qdrant-client
 psycopg==3.3.6
     # via backend
 psycopg-binary==3.3.6 ; implementation_name != 'pypy'
@@ -184,6 +243,8 @@ referencing==0.37.0
 requests==2.34.2
     # via
     #   langsmith
+    #   opentelemetry-exporter-http-transport
+    #   opentelemetry-exporter-otlp-proto-http
     #   requests-toolbelt
 requests-toolbelt==1.0.0
     # via langsmith
@@ -223,6 +284,9 @@ typing-extensions==4.16.0
     #   mcp
     #   minio
     #   opentelemetry-api
+    #   opentelemetry-exporter-otlp-proto-http
+    #   opentelemetry-sdk
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
     #   pydantic-settings
@@ -253,6 +317,10 @@ websockets==16.1.1 ; sys_platform != 'win32'
     # via langsmith
 websockets==17.3 ; sys_platform == 'win32'
     # via langsmith
+wrapt==2.5.2
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-httpx
 xxhash==4.0.2
     # via langsmith
 zstandard==0.25.0

@@ -39,6 +39,8 @@ USER appuser
 
 # 7. Documentation only: tells readers (and tools) which port the app listens on.
 EXPOSE 8000
+#    Prometheus metrics (app/core/metrics.py): scraped on the internal network only, never via nginx.
+EXPOSE 9100
 
 # 8. Docker checks this; if it keeps failing the container is marked "unhealthy".
 #    (Kubernetes ignores HEALTHCHECK and uses its own probes, see deploy/k8s/backend-deployment.yaml.)
