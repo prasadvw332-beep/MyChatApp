@@ -86,3 +86,18 @@ def test_find_files_keeps_supported_and_small_files(monkeypatch):
 
     assert [f.name for f in cli.find_files("s3://docs")] == ["a.pdf", "b.docx", "c.md", "d.txt"]
 
+
+def test_wait_polls_until_the_batches_are_done(monkeypatch, capsys):
+    states = iter([
+        (False, {"queued": 2, "processing": 1, "ready": 0, "failed": 0}),
+        (True, {"queued": 0, "processing": 0, "ready": 2, "failed": 1}),
+    ])
+    monkeypatch.setattr(cli.queue, "summary", lambda ids: next(states))
+    monkeypatch.setattr(cli.queue, "failures", lambda b: [{"filename": "scan.pdf", "error": "no text"}] if b == 7 else [])
+    monkeypatch.setattr(cli.time, "sleep", lambda s: None)
+
+    cli.wait([6, 7])
+
+    out = capsys.readouterr().out
+    assert out.count("waiting for workers") == 2
+    assert "failed: scan.pdf: no text" in out

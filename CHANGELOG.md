@@ -8,6 +8,10 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Airflow** schedules the import of every source (compose profile `airflow`, UI on :8081): nightly, one
+  `DockerOperator` task per source in the `ingest_sources` Variable, running `cli <source> --wait` (new: block
+  until the workers have indexed the batches) in a container from the worker image. Not yet run end to end.
+  `feature/airflow-ingestion`
 - **Ingestion sources**: Word `.docx` files (upload, batch import and CLI; headings become sections, tables
   keep their rows), and bulk import from other sources through a new connectors package
   (`app/ingestion/connectors/`): local folder, S3 / MinIO (`s3://`), Google Drive (`gdrive://`), SharePoint

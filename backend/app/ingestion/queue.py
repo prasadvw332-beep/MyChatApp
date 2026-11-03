@@ -172,6 +172,18 @@ def progress(limit: int = 50) -> dict:
     }
 
 
+def summary(batch_ids: list[int]) -> tuple[bool, dict[str, int]]:
+    """Whether every given batch is done, and their documents counted by status (for cli --wait)."""
+    with SessionLocal() as db:
+        open_batches = db.scalar(
+            select(func.count()).where(IngestBatch.id.in_(batch_ids), IngestBatch.status != BatchStatus.DONE)
+        )
+        counts = dict(db.execute(
+            select(Document.status, func.count()).where(Document.batch_id.in_(batch_ids)).group_by(Document.status)
+        ).all())
+    return open_batches == 0, {s: counts.get(s, 0) for s in BATCH_STATES}
+
+
 def failures(batch_id: int) -> list[dict]:
     with SessionLocal() as db:
         docs = db.scalars(

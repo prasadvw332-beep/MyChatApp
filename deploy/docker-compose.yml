@@ -134,6 +134,84 @@ services:
       - frontend
     restart: unless-stopped
 
+  # ---------- Airflow: schedules the nightly import of every source (deploy/airflow/dags/) ----------
+  # Not started by a plain `up`:  docker compose -f deploy/docker-compose.yml --profile airflow up -d
+  # UI: http://localhost:8081  (no login: local learning only). Airflow only schedules and watches;
+  # each import runs in a throwaway container from the worker image, the worker pool does the indexing.
+
+  # Airflow keeps its own state (runs, task history) in a separate database of the same PostgreSQL.
+  airflow-db-init:
+    profiles: [airflow]
+    image: postgres:17-alpine
+    environment:
+      PGPASSWORD: postgres
+    entrypoint: ["sh", "-c", "psql -h postgres -U postgres -tAc \"SELECT 1 FROM pg_database WHERE datname = 'airflow'\" | grep -q 1 || psql -h postgres -U postgres -c 'CREATE DATABASE airflow'"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # DockerOperator starts containers through the Docker API. Rather than giving Airflow the Docker
+  # socket itself (= root on the host), it talks to this proxy, which allows only what it needs.
+  docker-proxy:
+    profiles: [airflow]
+    image: tecnativa/docker-socket-proxy:v0.3.0
+    environment:
+      CONTAINERS: 1   # create, start, follow logs, wait for, remove
+      IMAGES: 1       # check that the worker image exists
+      POST: 1         # allow changes (creating containers), not only reads
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  airflow:
+    profiles: [airflow]
+    image: apache/airflow:3.1.0
+    command: standalone   # API server, scheduler, DAG processor and triggerer in one container
+    ports:
+      - "8081:8080"          # 8080 is the chatbot
+    environment:
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"   # everyone is admin, no login page
+      DOCKER_HOST: tcp://docker-proxy:2375
+      # read by the DAG: which image to run the import in, and which network it joins
+      INGEST_IMAGE: ${COMPOSE_PROJECT_NAME}-worker          # the image compose builds for "worker"
+      INGEST_NETWORK: ${COMPOSE_PROJECT_NAME}_default
+      # handed down to the import container (PASS_THROUGH in the DAG)
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/mychatapp
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      # source credentials, from your shell or a deploy/.env file; unset = S3 reads the local MinIO
+      S3_SOURCE_ENDPOINT: ${S3_SOURCE_ENDPOINT:-}
+      S3_SOURCE_ACCESS_KEY: ${S3_SOURCE_ACCESS_KEY:-}
+      S3_SOURCE_SECRET_KEY: ${S3_SOURCE_SECRET_KEY:-}
+      S3_SOURCE_SECURE: ${S3_SOURCE_SECURE:-}
+      SHAREPOINT_TENANT_ID: ${SHAREPOINT_TENANT_ID:-}
+      SHAREPOINT_CLIENT_ID: ${SHAREPOINT_CLIENT_ID:-}
+      SHAREPOINT_CLIENT_SECRET: ${SHAREPOINT_CLIENT_SECRET:-}
+      CONFLUENCE_EMAIL: ${CONFLUENCE_EMAIL:-}
+      CONFLUENCE_API_TOKEN: ${CONFLUENCE_API_TOKEN:-}
+      AZURE_STORAGE_SAS_TOKEN: ${AZURE_STORAGE_SAS_TOKEN:-}
+      NOTION_TOKEN: ${NOTION_TOKEN:-}
+      JIRA_EMAIL: ${JIRA_EMAIL:-}
+      JIRA_API_TOKEN: ${JIRA_API_TOKEN:-}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_HISTORY_DAYS: ${SLACK_HISTORY_DAYS:-}
+      SQL_SOURCE_URL: ${SQL_SOURCE_URL:-}
+      WEB_MAX_PAGES: ${WEB_MAX_PAGES:-}
+      # Google Drive needs its key file inside the import container: not wired up here
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags:ro
+    depends_on:
+      airflow-db-init:
+        condition: service_completed_successfully
+      docker-proxy:
+        condition: service_started
+      worker:
+        condition: service_started   # nothing would index what the imports queue
+
   # ---------- observability (configs in deploy/observability/) ----------
   # metrics: backend/worker :9100/metrics, postgres-exporter, qdrant, minio, the stack itself <- Prometheus -> Grafana
   # alerts:  observability/alerts.yml, evaluated by Prometheus (http://localhost:9090/alerts)

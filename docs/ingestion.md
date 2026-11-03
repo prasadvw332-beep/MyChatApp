@@ -67,6 +67,36 @@ MinIO: to try it, create a bucket in the MinIO console (http://localhost:9001), 
 Not covered yet: syncing (an import is a one-off; a re-run skips unchanged files by content hash but still
 downloads them, and files deleted at the source stay indexed) and per-document permissions.
 
+## Scheduling with Airflow
+
+An import is a one-off command; [Apache Airflow](https://airflow.apache.org/) runs it every night for every
+source (`deploy/airflow/dags/ingest_sources.py`):
+
+```
+Airflow, 02:00 ─► list_sources (Variable "ingest_sources") ─► import s3://company-docs   ─┐  one container each,
+                                                            ─► import confluence://.../HR ─┘  backend image
+                                                                 cli <source> --wait
+                                                                   └─► MinIO + queue ─► worker pool ─► Qdrant
+```
+
+- Airflow only schedules and watches. Each import is a throwaway container from the worker image
+  (`DockerOperator`), so the DAG needs none of the backend's dependencies and the worker pool does the indexing
+  as usual.
+- `--wait` keeps the task running until every queued document is ready or failed: a green task means the
+  source is searchable. Failed documents are listed in the task log; they don't fail the task, since retrying
+  won't fix an unreadable file. An unreachable source does fail it and is retried twice, 10 minutes apart.
+- Sources are an Airflow Variable (Admin → Variables → `ingest_sources`, a JSON list), so adding one needs no
+  code change: dynamic task mapping gives each source its own task, listed by its URL.
+
+```bash
+docker compose -f deploy/docker-compose.yml --profile airflow up -d   # http://localhost:8081
+```
+
+Airflow reaches Docker through a socket proxy that allows only container and image calls, not the socket
+itself. In Kubernetes the same DAG would use `KubernetesPodOperator` (a pod per import) instead of
+`DockerOperator`; a plain `CronJob` running `cli <source> --wait` is the lighter alternative when one schedule
+is all you need.
+
 **Word files**: `.docx` headings (`Title`, `Heading 1`–`6` styles) become sections, like Markdown headings,
 and tables become `cell | cell` rows in document order. Word has no fixed pages, so DOCX chunks have no page
 number. The older binary `.doc` format isn't supported; save it as `.docx` first.
