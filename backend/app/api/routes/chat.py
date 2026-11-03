@@ -7,16 +7,19 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
-from app.api.deps import limit_per_user
+from app.api.deps import CurrentUser, limit_per_user
 from app.cache import semantic
 from app.clients.llm import llm, title_llm
-from app.core import metrics
+from app.core import acl, llm_tracing, metrics
 from app.core.config import CHAT_MODEL, RATE_LIMIT_CHAT
 from app.core.errors import DependencyUnavailable
+from app.core.logging import request_id
 from app.guardrails import check_question
 from app.guardrails.content import WITHHELD, AnswerGuard
+from app.models import User
+from app.prompts import registry
 from app.prompts.title import TITLE_SHOTS, TITLE_SYSTEM
-from app.rag import knowledge_base
+from app.rag import graph, knowledge_base, query
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import ChatRequest
 from app.services import usage
@@ -53,31 +56,40 @@ async def title(req: ChatRequest):
 
 
 @router.post("/chat", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, user: User = CurrentUser):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
-    cacheable = semantic.cacheable(req.messages)
+    principals = acl.principals(user)  # None unless ACL_ENABLED
+    # with permissions, two users may see different documents: one shared answer cache would leak
+    cacheable = semantic.cacheable(req.messages) and principals is None
     asked_at = time.time()  # before the documents are read: see app/cache/semantic.py
 
     async def retrieve():
-        """A cached answer, or else the chunks to write a new one from."""
+        """A cached answer, or else the chunks (and graph facts) to write a new one from."""
         if cacheable and (hit := await asyncio.to_thread(semantic.lookup, question)):
-            return hit, []
+            return hit, [], []
+        queries = await query.search_queries(req.messages)  # just [question] unless QUERY_REWRITE is set
         try:
-            return None, await asyncio.to_thread(knowledge_base.retrieve, question)
+            docs = await asyncio.to_thread(knowledge_base.retrieve, question, principals=principals, queries=queries)
+            facts = await asyncio.to_thread(graph.facts, queries[0]) if graph.enabled() else []
         except Exception as e:
             raise DependencyUnavailable("Document search") from e
+        return None, docs, facts
 
     # the safety check calls a model too: run it alongside the search, not before it.
     # It runs on a cache hit as well: the question is new even when the answer is not.
-    (hit, docs), _ = await asyncio.gather(retrieve(), check_question(question))
+    (hit, docs, facts), _ = await asyncio.gather(retrieve(), check_question(question))
     if hit:
         return StreamingResponse(
             iter([hit.answer]),
             media_type="text/plain; charset=utf-8",
             headers={"X-Sources": json.dumps(hit.sources), "X-Cache": "hit"},
         )
-    messages = build_messages(req.messages, docs)
+    version, rag_prompt = registry.choose("rag", user.id)  # always "v1" unless PROMPT_AB is set
+    if registry.SPLIT:
+        await asyncio.to_thread(registry.record, request_id(), user.id, "rag", version)
+    messages = build_messages(req.messages, docs, facts, rag_prompt)
     sources = cite(docs)
+    trace = llm_tracing.config("chat", user.id, request_id(), prompt_version=version)  # {} unless Langfuse is set
 
     async def token_stream():
         started, first = time.perf_counter(), True
@@ -85,7 +97,7 @@ async def chat(req: ChatRequest):
         guard = AnswerGuard(question)
         answer: list[str] = []
         try:
-            async for chunk in llm.astream(messages):
+            async for chunk in llm.astream(messages, **trace):
                 if first:
                     metrics.llm_first_token.labels("chat").observe(time.perf_counter() - started)
                     first = False
@@ -112,5 +124,6 @@ async def chat(req: ChatRequest):
     return StreamingResponse(
         token_stream(),
         media_type="text/plain; charset=utf-8",
-        headers={"X-Sources": json.dumps(sources), "X-Cache": "miss" if cacheable else "off"},
+        headers={"X-Sources": json.dumps(sources), "X-Cache": "miss" if cacheable else "off",
+                 "X-Prompt-Version": version},
     )

@@ -57,7 +57,8 @@ def ingest_sources():
     def list_sources() -> list[list[str]]:
         """One import command per configured source."""
         sources = Variable.get("ingest_sources", default=DEFAULT_SOURCES, deserialize_json=True)
-        return [["python", "-m", "app.ingestion.cli", source, "--wait"] for source in sources]
+        # --sync: documents deleted at the source are deleted here too (with its safety limits)
+        return [["python", "-m", "app.ingestion.cli", source, "--wait", "--sync"] for source in sources]
 
     # .partial() holds what every import shares, .expand() makes one task per command at run
     # time ("dynamic task mapping"): add a source to the Variable and tonight it has its own task

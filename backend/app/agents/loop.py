@@ -1,39 +1,49 @@
 """The agent, as a LangGraph graph: the model calls tools until it can answer, each step reported as an event.
 
-    START -> agent --(tool calls, steps left)--> tools --> agent --> ...
+    START -> agent --(tool calls, steps left)--> approve --> tools --> agent --> ...
                    `--(an answer, or out of steps)--> END
 
-agent  one model call, its tokens streamed. On the last allowed step it gets no tools, so it must answer.
-tools  runs the reply's tool calls in order (guardrails screen each result) and keeps the documents used.
+agent    one model call, its tokens streamed. On the last allowed step it gets no tools, so it must answer.
+approve  human-in-the-loop: if a call is to a tool in AGENT_APPROVAL_TOOLS, the run pauses (LangGraph
+         interrupt) until the user approves or declines (POST /agent/resume). Otherwise it passes.
+tools    runs the reply's tool calls in order (guardrails screen each result) and keeps the documents used.
+         Declined calls get a "the user declined" result instead, so the model can answer without them.
 
 Events (one dict each, streamed by routes/agent.py as NDJSON):
     {"type": "tool", "name": ..., "args": {...}}         a tool call is starting
     {"type": "tool_done", "name": ..., "ok": bool}       ... and has finished
     {"type": "token", "text": ...}                       part of the answer
+    {"type": "approval_required", "thread_id": ..., "calls": [...]}
+                                                         paused: resume with the thread id (last event)
     {"type": "sources", "sources": [...]}                documents the answer is based on (last event)
 
 The nodes send events through LangGraph's stream writer (stream_mode "custom") as they happen; the
-final state gives the sources. No checkpointer: a run lives within one request, and the chat history
-arrives with the request.
+final state gives the sources. A checkpointer (checkpoint.py) saves the state after every node, under
+the run's thread id: that's what a paused run continues from. The chat history still arrives with
+each request; long-term facts about the user come from memory.py.
 """
 
 import json
 import logging
 import operator
+import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, TypedDict
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command, interrupt
 
+from app.agents import checkpoint
 from app.clients.llm import agent_llm
 from app.core import metrics
-from app.core.config import AGENT_MAX_STEPS, AGENT_MODEL
+from app.core.config import AGENT_APPROVAL_TOOLS, AGENT_MAX_STEPS, AGENT_MODEL
 from app.core.telemetry import span
 from app.guardrails import injection
 from app.prompts.agents import AGENT_PROMPT
@@ -48,26 +58,53 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     steps: int  # model calls so far
     documents: Annotated[list[Document], operator.add]  # what the tools returned, for cite()
+    declined: list[str]  # ids of the tool calls the user declined in the last approval
 
 
-async def run(history: list[Message], tools: list[BaseTool]) -> AsyncIterator[dict]:
+async def run(history: list[Message], tools: list[BaseTool], *, thread_id: str | None = None,
+              about_user: str = "", trace: dict | None = None) -> AsyncIterator[dict]:
+    """One agent answer. `about_user`: long-term memory for the system prompt (memory.py);
+    `trace`: LLM tracing callbacks (core/llm_tracing.py)."""
     tally = usage.Tally()  # every model step of this answer, tool rounds included
-    system = SystemMessage(injection.with_canary(AGENT_PROMPT))
-    state: AgentState = {"messages": [system, *build_messages(history, [])[1:]], "steps": 0, "documents": []}
-    # each round is two steps (agent, tools), plus the final answer
-    limits = {"recursion_limit": 2 * AGENT_MAX_STEPS + 4}
+    system = SystemMessage(injection.with_canary(AGENT_PROMPT + about_user))
+    state: AgentState = {"messages": [system, *build_messages(history, [])[1:]], "steps": 0, "documents": [],
+                         "declined": []}
+    async for event in _drive(tools, tally, state, thread_id or uuid.uuid4().hex, trace):
+        yield event
 
-    async for mode, data in build(tools, tally).astream(state, limits, stream_mode=["custom", "values"]):
+
+async def resume(thread_id: str, approved: bool, tools: list[BaseTool], trace: dict | None = None) -> AsyncIterator[dict]:
+    """Continue a run paused for approval, from its checkpoint. `tools` must be the same set as before."""
+    async for event in _drive(tools, usage.Tally(), Command(resume={"approved": approved}), thread_id, trace):
+        yield event
+
+
+async def _drive(tools: list[BaseTool], tally: usage.Tally, graph_input, thread_id: str,
+                 trace: dict | None) -> AsyncIterator[dict]:
+    cp = await checkpoint.saver()
+    config = {
+        # each round is three steps (agent, approve, tools), plus the final answer
+        "recursion_limit": 3 * AGENT_MAX_STEPS + 4,
+        "configurable": {"thread_id": thread_id},  # the checkpointer's key for this run
+        **(trace or {}).get("config", {}),
+    }
+    state = None
+    stream = build(tools, tally, cp).astream(graph_input, config, stream_mode=["custom", "values", "updates"])
+    async for mode, data in stream:
         if mode == "custom":
             yield data
-        else:
+        elif mode == "values":
             state = data
-
+        elif "__interrupt__" in data:  # paused in `approve`: the state is saved, this request ends here
+            await usage.record("agent", tally, AGENT_MODEL)
+            yield {"type": "approval_required", "thread_id": thread_id, **data["__interrupt__"][0].value}
+            return
     await usage.record("agent", tally, AGENT_MODEL)
-    yield {"type": "sources", "sources": cite(state["documents"])}
+    await checkpoint.forget(cp, thread_id)
+    yield {"type": "sources", "sources": cite(state["documents"] if state else [])}
 
 
-def build(tools: list[BaseTool], tally: usage.Tally) -> CompiledStateGraph:
+def build(tools: list[BaseTool], tally: usage.Tally, checkpointer: BaseCheckpointSaver | None = None) -> CompiledStateGraph:
     """The graph for one run. Built per request: compiling takes about a millisecond, and the
     tools, the model (tests replace it) and the usage tally belong to that run."""
     by_name = {t.name: t for t in tools}
@@ -85,12 +122,27 @@ def build(tools: list[BaseTool], tally: usage.Tally) -> CompiledStateGraph:
         tally.add(reply)
         return {"messages": [reply] if reply is not None else [], "steps": state["steps"] + 1}
 
+    def approve(state: AgentState) -> dict:
+        """Pause for the user's OK before risky tools. interrupt() saves the state and ends the request;
+        on resume this node runs again from the top and interrupt() returns the user's answer. So
+        nothing before interrupt() may have side effects: it would happen twice."""
+        risky = [c for c in state["messages"][-1].tool_calls if c["name"] in AGENT_APPROVAL_TOOLS]
+        if not risky:
+            return {"declined": []}
+        answer = interrupt({"calls": [{"id": c["id"], "name": c["name"], "args": c["args"]} for c in risky]})
+        approved = bool(answer.get("approved")) if isinstance(answer, dict) else bool(answer)
+        return {"declined": [] if approved else [c["id"] for c in risky]}
+
     async def run_tools(state: AgentState) -> dict:
         write = get_stream_writer()
         results, documents = [], []
         for call in state["messages"][-1].tool_calls:
             write({"type": "tool", "name": call["name"], "args": call["args"]})
-            result = await _call(by_name.get(call["name"]), call)
+            if call["id"] in state.get("declined", []):
+                result = ToolMessage("The user declined this action. Answer without it, or ask what they'd prefer.",
+                                     tool_call_id=call["id"], status="error")
+            else:
+                result = await _call(by_name.get(call["name"]), call)
             results.append(result)
             documents += _documents(call, result)
             write({"type": "tool_done", "name": call["name"], "ok": result.status != "error"})
@@ -100,16 +152,18 @@ def build(tools: list[BaseTool], tally: usage.Tally) -> CompiledStateGraph:
         last = state["messages"][-1]
         # the step after the last allowed one had no tools; its answer is final whatever it contains
         if isinstance(last, AIMessage) and last.tool_calls and state["steps"] <= AGENT_MAX_STEPS:
-            return "tools"
+            return "approve"
         return END
 
     graph = StateGraph(AgentState)
     graph.add_node("agent", agent)
+    graph.add_node("approve", approve)
     graph.add_node("tools", run_tools)
     graph.add_edge(START, "agent")
-    graph.add_conditional_edges("agent", next_step, ["tools", END])
+    graph.add_conditional_edges("agent", next_step, ["approve", END])
+    graph.add_edge("approve", "tools")
     graph.add_edge("tools", "agent")
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
 
 
 async def _call(tool: BaseTool | None, call: dict) -> ToolMessage:

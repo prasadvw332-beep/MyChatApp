@@ -56,6 +56,22 @@ def user_id_from_token(token: str | None) -> int | None:
     except (jwt.PyJWTError, ValueError, KeyError):
         return None
 
+
+def sign(data: dict, minutes: int) -> str:
+    """Short-lived signed data for a cookie (the SSO flow's state): readable, but not forgeable."""
+    exp = datetime.now(timezone.utc) + timedelta(minutes=minutes)
+    return jwt.encode({**data, "exp": exp, "typ": "flow"}, _secret, algorithm="HS256")
+
+
+def unsign(token: str | None) -> dict | None:
+    if not token:
+        return None
+    try:
+        data = jwt.decode(token, _secret, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        return None
+    return data if data.get("typ") == "flow" else None  # a session token must not pass as flow data
+
 # --- brute-force throttle: 5 failures per username+IP in 5 minutes (in memory, per process) ---
 _failures: dict[str, list[float]] = {}
 WINDOW, MAX_FAILURES = 300, 5

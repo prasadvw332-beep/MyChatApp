@@ -26,7 +26,7 @@ class Duplicate(Exception):
 
 def create(
     doc_id: str, filename: str, data: bytes, digest: str,
-    status: DocStatus = DocStatus.INDEXING, batch_id: int | None = None,
+    status: DocStatus = DocStatus.INDEXING, batch_id: int | None = None, acl: list[str] | None = None,
 ) -> None:
     """Add the row for a new document (direct upload, or queued with a batch_id). Raises Duplicate."""
     try:
@@ -35,6 +35,7 @@ def create(
                 doc_id=doc_id, filename=filename, ext=_ext(filename),
                 size_bytes=len(data), sha256=digest, minio_key=f"{doc_id}/{filename}",
                 status=status, uploaded_at=datetime.now(timezone.utc), batch_id=batch_id,
+                acl=acl or ["public"],
             ))
     except IntegrityError:
         raise Duplicate() from None
@@ -71,15 +72,35 @@ def ids_for_filename(filename: str) -> set[str]:
 def _out(d: Document) -> dict:
     return {
         "doc_id": d.doc_id, "filename": d.filename, "chunks": d.chunks, "size_bytes": d.size_bytes,
-        "ext": d.ext, "status": d.status, "error": d.error, "tags": d.tags or [],
+        "ext": d.ext, "status": d.status, "error": d.error, "tags": d.tags or [], "acl": d.acl or ["public"],
         "uploaded_at": d.uploaded_at.isoformat(timespec="seconds"),
     }
 
 
-def list_all() -> list[dict]:
+def list_all(principals: list[str] | None = None) -> list[dict]:
+    """Every document, or with `principals` only those whose acl shares one of them (app/core/acl.py)."""
+    query = select(Document).order_by(Document.filename)
+    if principals is not None:
+        # JSONB ?| : "does the acl array contain any of these strings", served by the GIN index
+        query = query.where(Document.acl.has_any(principals))
     with SessionLocal() as db:
-        docs = db.scalars(select(Document).order_by(Document.filename)).all()
-        return [_out(d) for d in docs]
+        return [_out(d) for d in db.scalars(query).all()]
+
+
+def acl_of(doc_id: str) -> list[str] | None:
+    """The document's access list, or None if there's no such document."""
+    with SessionLocal() as db:
+        doc = db.get(Document, doc_id)
+        return (doc.acl or ["public"]) if doc else None
+
+
+def set_acl(doc_id: str, acl: list[str]) -> bool:
+    with SessionLocal.begin() as db:
+        doc = db.get(Document, doc_id)
+        if not doc:
+            return False
+        doc.acl = acl
+        return True
 
 
 def set_tags(doc_id: str, tags: list[str]) -> dict | None:

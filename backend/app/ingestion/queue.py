@@ -172,6 +172,17 @@ def progress(limit: int = 50) -> dict:
     }
 
 
+def documents_of_source(source: str) -> dict[str, str]:
+    """filename -> doc_id of the ready documents imported from this source (for cli --sync)."""
+    with SessionLocal() as db:
+        rows = db.execute(
+            select(Document.filename, Document.doc_id)
+            .join(IngestBatch, Document.batch_id == IngestBatch.id)
+            .where(IngestBatch.source == source, Document.status == DocStatus.READY)
+        ).all()
+    return dict(rows)
+
+
 def summary(batch_ids: list[int]) -> tuple[bool, dict[str, int]]:
     """Whether every given batch is done, and their documents counted by status (for cli --wait)."""
     with SessionLocal() as db:

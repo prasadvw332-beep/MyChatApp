@@ -5,7 +5,7 @@ creates an account, so one client in a loop could take the model server away fro
 
 Fixed windows: "20/minute" allows 20 requests in each calendar minute, per user (per IP on routes
 without a login). The counts live in PostgreSQL, so every backend replica sees the same numbers: one
-upsert per limited request, next to a model call that takes seconds. A fixed window lets a client send
+upsert per limited request, next to a model call that takes seconds (or Redis, with REDIS_URL). A fixed window lets a client send
 up to twice the limit across a window boundary; that is fine for what this is for (no single client
 hogs the model), and far simpler than a sliding log.
 
@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.clients.redis_counts import RedisCounts
 from app.core import config, metrics
 from app.core.audit import audit
 from app.core.errors import TooManyRequests
@@ -56,7 +57,8 @@ class Counts(Protocol):
     def hit(self, key: str, window_start: int, window_seconds: int) -> int: ...
 
 
-counts: Counts = rate_limit_store
+# PostgreSQL by default; Redis when REDIS_URL is set (app/clients/redis_counts.py)
+counts: Counts = RedisCounts(config.REDIS_URL) if config.REDIS_URL else rate_limit_store
 
 
 async def check(name: str, subject: str, limit: Limit | None) -> None:

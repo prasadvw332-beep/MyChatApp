@@ -141,6 +141,77 @@ SQL_SOURCE_URL = os.getenv("SQL_SOURCE_URL", "")
 WEB_MAX_PAGES = int(os.getenv("WEB_MAX_PAGES", "200"))
 
 
+def _flag(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).lower() == "true"
+
+
+# ---------- Production RAG features (docs/production-rag.md). All off by default. ----------
+
+# Retrieval (app/rag/): hybrid = dense vectors + BM25 keywords fused with RRF, in its own collection
+HYBRID_SEARCH = _flag("HYBRID_SEARCH")
+# Reranking after retrieval: off | cross_encoder (local, sentence-transformers) | api (Cohere/Jina-style /rerank)
+RERANK = os.getenv("RERANK", "off").lower()
+RERANK_MODEL = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-base")  # cross_encoder: a Hugging Face model
+RERANK_API_URL = os.getenv("RERANK_API_URL", "https://api.cohere.com/v2/rerank")
+RERANK_API_KEY = os.getenv("RERANK_API_KEY", "")
+RERANK_CANDIDATES = int(os.getenv("RERANK_CANDIDATES", "20"))  # fetched before reranking down to TOP_K
+# Query rewriting before search: off | condense (follow-up -> standalone) | multi (N variants) | hyde
+QUERY_REWRITE = os.getenv("QUERY_REWRITE", "off").lower()
+QUERY_VARIANTS = int(os.getenv("QUERY_VARIANTS", "3"))  # multi
+# Knowledge graph next to the vectors: entities and relations extracted by the LLM at index time
+GRAPH_RAG = _flag("GRAPH_RAG")
+
+# Document permissions: each document lists who may see it ("public", "user:<id>", "group:<name>")
+ACL_ENABLED = _flag("ACL_ENABLED")
+
+# Agent
+AGENT_CHECKPOINTER = os.getenv("AGENT_CHECKPOINTER", "memory").lower()  # memory | postgres
+# tools that need the user's OK before they run (human-in-the-loop), comma-separated names
+AGENT_APPROVAL_TOOLS = {t.strip() for t in os.getenv("AGENT_APPROVAL_TOOLS", "").split(",") if t.strip()}
+AGENT_MEMORY = _flag("AGENT_MEMORY")  # long-term memory per user: remember/recall tools
+SQL_AGENT_URL = os.getenv("SQL_AGENT_URL", "")  # text-to-SQL tool: SQLAlchemy URL of a READ-ONLY user
+SQL_AGENT_MAX_ROWS = int(os.getenv("SQL_AGENT_MAX_ROWS", "50"))
+
+# LLM gateway: an extra model tried when the primary fails, "provider:model" (openai:gpt-4o-mini,
+# anthropic:claude-haiku-5-5, or openai:<name> behind a LiteLLM proxy at LLM_FALLBACK_BASE_URL)
+LLM_FALLBACK = os.getenv("LLM_FALLBACK", "")
+LLM_FALLBACK_BASE_URL = os.getenv("LLM_FALLBACK_BASE_URL", "")
+# LLM tracing in Langfuse (prompt, retrieved context, tokens, cost per answer)
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+# Prompt A/B test: "v1=50,v2=50" splits users between versions of the RAG prompt (app/prompts/registry.py)
+PROMPT_AB = os.getenv("PROMPT_AB", "")
+
+# PII redaction: off | index (before chunks are stored) | llm (before text is sent to the model) | both
+PII_REDACTION = os.getenv("PII_REDACTION", "off").lower()
+PII_ENGINE = os.getenv("PII_ENGINE", "regex").lower()  # regex | presidio
+
+# SSO (OpenID Connect): Entra ID, Google, Okta, Keycloak, ...
+# Entra ID (app/core/entra.py): a tenant id, or "organizations" for any work account (then list the allowed tenants)
+ENTRA_TENANT_ID = os.getenv("ENTRA_TENANT_ID", "")
+ENTRA_ALLOWED_TENANTS = {t.strip() for t in os.getenv("ENTRA_ALLOWED_TENANTS", "").split(",") if t.strip()}
+ENTRA_GROUP_NAMES = os.getenv("ENTRA_GROUP_NAMES", "")  # "<group object id>=hr,<id>=finance"
+# with ENTRA_TENANT_ID set, the issuer follows from it
+OIDC_ISSUER = os.getenv("OIDC_ISSUER") or (
+    f"https://login.microsoftonline.com/{ENTRA_TENANT_ID}/v2.0" if ENTRA_TENANT_ID else "")
+OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "")
+OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
+OIDC_REDIRECT_URI = os.getenv("OIDC_REDIRECT_URI", "http://localhost:8080/api/auth/oidc/callback")
+OIDC_GROUPS_CLAIM = os.getenv("OIDC_GROUPS_CLAIM", "groups")  # its values become the user's groups (ACL)
+
+# Redis: shared, fast counters for the rate limits instead of PostgreSQL. Empty = PostgreSQL.
+REDIS_URL = os.getenv("REDIS_URL", "")
+
+# Event-driven ingestion: S3/MinIO bucket notifications to POST /ingest/events/s3, with this bearer token
+INGEST_WEBHOOK_TOKEN = os.getenv("INGEST_WEBHOOK_TOKEN", "")
+
+for _name, _allowed in [("RERANK", "off cross_encoder api"), ("QUERY_REWRITE", "off condense multi hyde"),
+                        ("PII_REDACTION", "off index llm both"), ("PII_ENGINE", "regex presidio"),
+                        ("AGENT_CHECKPOINTER", "memory postgres")]:
+    if globals()[_name] not in _allowed.split():
+        raise ValueError(f"{_name} must be one of: {_allowed.replace(' ', ', ')}")
+
 _DEV_MINIO_SECRET = "minioadmin123"
 
 
@@ -157,5 +228,7 @@ def validate() -> None:
         problems.append("DATABASE_URL uses the development password")
     if not COOKIE_SECURE:
         problems.append("COOKIE_SECURE must be true (sessions over https only)")
+    if INGEST_WEBHOOK_TOKEN and len(INGEST_WEBHOOK_TOKEN) < 32:
+        problems.append("INGEST_WEBHOOK_TOKEN must be at least 32 random characters")
     if problems:
         raise RuntimeError("Refusing to start in production:\n  - " + "\n  - ".join(problems))

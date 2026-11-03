@@ -61,7 +61,7 @@ def test_anonymous_requests_have_no_user_id(client, logs):
 
 
 def test_upload_is_audited_with_who_and_what(logs, session, monkeypatch):
-    monkeypatch.setattr(knowledge_base, "ingest", lambda name, data: {"doc_id": "d1", "filename": name, "chunks": 3})
+    monkeypatch.setattr(knowledge_base, "ingest", lambda name, data, acl=None: {"doc_id": "d1", "filename": name, "chunks": 3})
     session.post("/upload", files={"file": ("plan.txt", b"hello")})
 
     e = logs.event("document.upload")

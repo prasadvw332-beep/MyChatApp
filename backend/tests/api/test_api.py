@@ -48,7 +48,7 @@ def test_unhandled_error_is_a_generic_500_with_request_id(client, logged_in, mon
 
 
 def test_duplicate_upload_is_409(client, logged_in, monkeypatch):
-    def duplicate(name, data):
+    def duplicate(name, data, acl=None):
         raise knowledge_base.DuplicateDocument("Already there.")
 
     monkeypatch.setattr(knowledge_base, "ingest", duplicate)

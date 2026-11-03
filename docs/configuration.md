@@ -130,6 +130,43 @@ the first rejection in a window is audited (`rate_limit.exceeded`), every one is
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty (tracing off) | e.g. `http://otel-collector:4318` |
 | `OTEL_SERVICE_NAME` | `mychatapp-backend` / `mychatapp-worker` | name of the traces in Tempo |
 
+## Production RAG features
+
+All off by default; see [production-rag.md](production-rag.md) for what each does.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `HYBRID_SEARCH` | `false` | dense + BM25 search fused with RRF, in collection `<QDRANT_COLLECTION>_hybrid` (re-index) |
+| `RERANK` | `off` | `cross_encoder` (local) or `api` (Cohere/Jina-style `/rerank`) |
+| `RERANK_MODEL` | `BAAI/bge-reranker-base` | the cross-encoder, or the API's model name |
+| `RERANK_API_URL` / `RERANK_API_KEY` | Cohere's URL / empty | for `RERANK=api`; the key is **secret** |
+| `RERANK_CANDIDATES` | `20` | chunks fetched before reranking down to 5 |
+| `QUERY_REWRITE` | `off` | `condense`, `multi` or `hyde` |
+| `QUERY_VARIANTS` | `3` | rephrasings for `multi` |
+| `GRAPH_RAG` | `false` | extract entities and relations at index time, add graph facts to answers |
+| `ACL_ENABLED` | `false` | document permissions (re-index first: older chunks have no acl) |
+| `AGENT_CHECKPOINTER` | `memory` | `postgres` lets any replica resume a paused agent run |
+| `AGENT_APPROVAL_TOOLS` | empty | comma-separated tool names that need the user's OK |
+| `AGENT_MEMORY` | `false` | long-term memory per user (`remember` tool) |
+| `SQL_AGENT_URL` | empty | **Secret**; text-to-SQL tool, SQLAlchemy URL of a read-only user |
+| `SQL_AGENT_MAX_ROWS` | `50` | rows per query result |
+| `LLM_FALLBACK` | empty | `openai:<model>` or `anthropic:<model>`, tried when Ollama fails |
+| `LLM_FALLBACK_BASE_URL` | empty | e.g. a LiteLLM proxy, `http://litellm:4000` |
+| `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | empty | LLM tracing; the secret key is **secret** |
+| `LANGFUSE_HOST` | `https://cloud.langfuse.com` | or your self-hosted Langfuse |
+| `PROMPT_AB` | empty | e.g. `v1=50,v2=50`: RAG prompt versions per user |
+| `PII_REDACTION` | `off` | `index`, `llm` or `both` |
+| `PII_ENGINE` | `regex` | or `presidio` (names, places; needs its packages) |
+| `OIDC_ISSUER` | empty (from `ENTRA_TENANT_ID` if set) | SSO provider, e.g. `https://accounts.google.com` |
+| `ENTRA_TENANT_ID` | empty | Entra ID tenant id, or `organizations` for any work account |
+| `ENTRA_ALLOWED_TENANTS` | empty | with `organizations`: the tenant ids allowed to log in |
+| `ENTRA_GROUP_NAMES` | empty | `<group object id>=hr,<id>=finance`: readable names for ACLs |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | empty | the app registration; the secret is **secret** |
+| `OIDC_REDIRECT_URI` | `http://localhost:8080/api/auth/oidc/callback` | registered at the provider |
+| `OIDC_GROUPS_CLAIM` | `groups` | ID-token claim copied into the user's groups |
+| `REDIS_URL` | empty | rate-limit counters in Redis instead of PostgreSQL |
+| `INGEST_WEBHOOK_TOKEN` | empty (off) | **Secret**; Bearer token for `POST /ingest/events/s3`; 32+ characters in production |
+
 ## Evaluation
 
 | Variable | Default | Meaning |

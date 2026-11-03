@@ -33,7 +33,7 @@ def test_ids_in_the_path_do_not_become_label_values(client, metric):
 
 
 def test_question_without_context_is_counted(metric, monkeypatch):
-    monkeypatch.setattr(knowledge_base.store, "search", lambda q, k: [])
+    monkeypatch.setattr(knowledge_base.store, "search", lambda q, k, acl=None: [])
     before = metric("retrieval_no_context_total")
     assert knowledge_base.retrieve("anything") == []
     assert metric("retrieval_no_context_total") == before + 1

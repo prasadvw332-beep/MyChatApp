@@ -46,6 +46,8 @@ class Document(Base):
     minio_key: Mapped[str | None] = mapped_column(String)
     status: Mapped[str] = mapped_column(String(16), default=DocStatus.INDEXING)  # see DocStatus
     tags: Mapped[list] = mapped_column(JSONB, default=list)
+    # who may see it, when ACL_ENABLED: "public", "user:<id>", "group:<name>" (app/core/acl.py)
+    acl: Mapped[list] = mapped_column(JSONB, default=lambda: ["public"])
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     # batch ingestion only

@@ -5,6 +5,7 @@
     uv run python -m app.ingestion.cli gdrive://<folder id>           # other sources: see connectors/__init__.py
     uv run python -m app.ingestion.cli ./my-documents --batch-size 50
     uv run python -m app.ingestion.cli s3://company-docs --wait       # ...and block until the workers indexed it
+    uv run python -m app.ingestion.cli s3://company-docs --sync       # ...and delete what's gone at the source
     uv run python -m app.ingestion.cli --status                       # progress of the batches
     uv run python -m app.ingestion.cli --failures 3                   # why documents in batch 3 failed
     uv run python -m app.ingestion.cli --retry-failed                 # queue failed documents again
@@ -27,6 +28,7 @@ from pathlib import Path, PurePosixPath
 from app.core.config import INGEST_BATCH_SIZE, MAX_UPLOAD_MB
 from app.ingestion import connectors, queue
 from app.ingestion.connectors import SourceFile
+from app.rag import knowledge_base
 from app.rag.chunking import SUPPORTED
 
 
@@ -44,8 +46,8 @@ def find_files(source: str) -> list[SourceFile]:
     return files
 
 
-def enqueue(source: str, batch_size: int, threads: int) -> list[int]:
-    files = find_files(source)
+def enqueue(source: str, batch_size: int, threads: int, files: list[SourceFile] | None = None) -> list[int]:
+    files = find_files(source) if files is None else files
     print(f"{len(files)} file(s) in {source}, batches of {batch_size}")
     queued = skipped = 0
     batch_ids: list[int] = []
@@ -83,6 +85,33 @@ def wait(batch_ids: list[int], poll_seconds: int = 30) -> None:
             print(f"failed: {f['filename']}: {f['error']}")
 
 
+SYNC_MAX_DELETE_SHARE = 0.5  # refuse to delete more than half of a source's documents in one run
+
+
+def sync(source: str, present: set[str], force: bool = False) -> None:
+    """Delete the documents imported from `source` earlier whose file is no longer there.
+
+    Deletion is the dangerous half of a sync: a wrong path, an expired token that lists nothing, or a
+    permissions change would look exactly like "everything was deleted". So an empty listing never
+    deletes, and neither does one that would remove more than SYNC_MAX_DELETE_SHARE, unless --force.
+    """
+    known = queue.documents_of_source(source)
+    gone = {name: doc_id for name, doc_id in known.items() if name not in present}
+    if not gone:
+        print("sync: nothing to delete")
+        return
+    if not present:
+        print(f"sync skipped: the source listed no files, but {len(known)} were imported from it before")
+        return
+    if len(gone) > SYNC_MAX_DELETE_SHARE * len(known) and not force:
+        print(f"sync skipped: {len(gone)} of {len(known)} documents would be deleted. Check the source, "
+              f"then rerun with --force if that's right")
+        return
+    for name, doc_id in sorted(gone.items()):
+        knowledge_base.delete_document(doc_id)
+        print(f"removed {name} (deleted at the source)")
+
+
 def show_status() -> None:
     p = queue.progress()
     t = p["totals"]
@@ -102,6 +131,8 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=INGEST_BATCH_SIZE)
     ap.add_argument("--threads", type=int, default=8, help="parallel uploads to MinIO")
     ap.add_argument("--wait", action="store_true", help="after queueing, wait until the workers are done with it")
+    ap.add_argument("--sync", action="store_true", help="also delete documents whose file is gone at the source")
+    ap.add_argument("--force", action="store_true", help="with --sync: allow deleting more than half of them")
     ap.add_argument("--status", action="store_true", help="show batch progress")
     ap.add_argument("--failures", type=int, metavar="BATCH", help="list failed documents of a batch")
     ap.add_argument("--retry-failed", action="store_true", help="queue all failed documents again")
@@ -118,9 +149,12 @@ def main() -> None:
         # a folder is recorded as its absolute path in the batch's source column, as before
         source = args.source if "://" in args.source else str(Path(args.source).resolve())
         try:
-            batch_ids = enqueue(source, args.batch_size, args.threads)
+            files = find_files(source)
+            batch_ids = enqueue(source, args.batch_size, args.threads, files)
         except ValueError as e:  # bad folder, bad s3:// url, missing bucket
             sys.exit(str(e))
+        if args.sync:
+            sync(source, {f.name for f in files}, args.force)
         if args.wait:
             wait(batch_ids)
     else:

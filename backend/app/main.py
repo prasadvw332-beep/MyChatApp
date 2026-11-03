@@ -53,7 +53,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Sources", "X-Cache", "X-Request-ID", "Retry-After"],
+    expose_headers=["X-Sources", "X-Cache", "X-Request-ID", "Retry-After", "X-Prompt-Version"],
 )
 
 app.include_router(api_router)

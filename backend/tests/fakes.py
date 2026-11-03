@@ -27,8 +27,13 @@ class FakeVectorStore:
         for i, d in enumerate(docs):
             self.chunks[ids[i] if ids else f"{d.metadata['doc_id']}/{i}"] = d
 
-    def search(self, query, k):
+    def search(self, query, k, acl=None):
         return self.hits[:k]
+
+    def set_acl(self, doc_id, acl):
+        for d in self.chunks.values():
+            if d.metadata["doc_id"] == doc_id:
+                d.metadata["acl"] = acl
 
     def delete_doc(self, doc_id):
         self.chunks = {k: d for k, d in self.chunks.items() if d.metadata["doc_id"] != doc_id}
@@ -58,7 +63,7 @@ class FakeDocStore:
     def find_duplicate(self, digest):
         return next((r for r in self.rows.values() if r.sha256 == digest and r.status == "ready"), None)
 
-    def create(self, doc_id, filename, data, digest, status="indexing", batch_id=None):
+    def create(self, doc_id, filename, data, digest, status="indexing", batch_id=None, acl=None):
         if any(r.sha256 == digest for r in self.rows.values()):
             raise self.Duplicate()
         self.rows[doc_id] = SimpleNamespace(doc_id=doc_id, filename=filename, sha256=digest, status=status, chunks=0)

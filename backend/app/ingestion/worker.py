@@ -51,7 +51,7 @@ def _process(doc) -> None:
     started = time.monotonic()
     set_request_id(f"doc-{doc.doc_id[:12]}")  # every log line about this document carries its id
     try:
-        chunks = knowledge_base.index(doc.doc_id, doc.filename, storage.read(doc.minio_key)[0])
+        chunks = knowledge_base.index(doc.doc_id, doc.filename, storage.read(doc.minio_key)[0], doc.acl)
     except UnreadableDocument as e:  # retrying won't change that
         log.warning("failed %s: %s", doc.filename, e)
         queue.fail(doc, str(e), retry=False)

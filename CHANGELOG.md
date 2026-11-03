@@ -8,6 +8,14 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Production RAG features**, each off until configured (docs/production-rag.md): hybrid search (BM25 sparse
+  vectors + RRF), reranking (cross-encoder or API), query rewriting (condense / multi-query / HyDE), GraphRAG
+  (entity-relation facts), document ACLs filtered inside the vector search, `cli --sync` deletion sync with
+  safety limits, agent checkpoints with human approval (`/agent/resume`), long-term user memory, a read-only
+  text-to-SQL tool, LLM fallback (OpenAI / Anthropic / LiteLLM), Langfuse tracing, prompt versions with A/B
+  assignment and `/prompts/experiments`, PII redaction (regex or Presidio), OIDC single sign-on with PKCE (plus Entra ID: group ids to names, groups overage via Graph, app roles, multi-tenant allow-list, sign-out),
+  Redis rate-limit counters, and S3/MinIO event ingestion (`/ingest/events/s3`). Migration 0008. Written for
+  learning: not yet run end to end. `feature/production-rag`
 - **Pluggable text extraction** (`EXTRACTOR`): besides the default pypdf + python-docx, Docling, Unstructured
   or Azure AI Document Intelligence, which add OCR for scanned PDFs, real tables and PPTX/XLSX/HTML/image
   files. Optional packages, imported only when chosen; not yet run. `feature/extractors`

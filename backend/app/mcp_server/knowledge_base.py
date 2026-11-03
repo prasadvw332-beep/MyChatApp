@@ -11,11 +11,19 @@ import logging
 from mcp.server.fastmcp import FastMCP
 
 from app.clients import storage
+from app.core import acl
+from app.core.config import ACL_ENABLED
 from app.rag import knowledge_base
 from app.rag.chunking import chunk
+from app.repositories import doc_store
 
 MAX_RESULTS = 10
 MAX_READ_CHARS = 8000  # per read_document call; a small model's context fills up fast
+
+# The server is shared by every request (and every MCP client), so it doesn't know who is asking.
+# With ACL_ENABLED it therefore sees only public documents: safe by default. Per-user access would
+# need the caller's identity passed with each call (e.g. a signed token the agent route adds).
+AGENT_PRINCIPALS = [acl.PUBLIC] if ACL_ENABLED else None
 
 server = FastMCP(
     "knowledge-base",
@@ -32,7 +40,7 @@ async def search_documents(query: str, k: int = 5) -> dict:
     Returns up to `k` passages with their file name and page. An empty list means the
     documents don't cover the query; try different words or answer without them.
     """
-    docs = await asyncio.to_thread(knowledge_base.retrieve, query, max(1, min(k, MAX_RESULTS)))
+    docs = await asyncio.to_thread(knowledge_base.retrieve, query, max(1, min(k, MAX_RESULTS)), AGENT_PRINCIPALS)
     return {
         "results": [
             {"source": d.metadata.get("source"), "page": d.metadata.get("page"),
@@ -45,7 +53,7 @@ async def search_documents(query: str, k: int = 5) -> dict:
 @server.tool()
 async def list_documents() -> dict:
     """List the uploaded documents with their id, file name, status and size in chunks."""
-    docs = await asyncio.to_thread(knowledge_base.list_documents)
+    docs = await asyncio.to_thread(knowledge_base.list_documents, AGENT_PRINCIPALS)
     return {"documents": [{k: d[k] for k in ("doc_id", "filename", "status", "chunks")} for d in docs]}
 
 
@@ -62,6 +70,8 @@ async def read_document(doc_id: str, offset: int = 0) -> dict:
 
 
 def _document_text(doc_id: str) -> tuple[str, str]:
+    if AGENT_PRINCIPALS is not None and not acl.can_see(doc_store.acl_of(doc_id), AGENT_PRINCIPALS):
+        raise ValueError(f"No document with id {doc_id!r}; use list_documents to see the ids.")
     name = storage.find(doc_id)
     if not name:
         raise ValueError(f"No document with id {doc_id!r}; use list_documents to see the ids.")

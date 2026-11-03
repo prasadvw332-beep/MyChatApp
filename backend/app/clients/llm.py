@@ -1,7 +1,22 @@
-"""Ollama model clients: chat models and embeddings."""
+"""Model clients: chat models and embeddings (Ollama), with an optional fallback model (the gateway).
+
+LLM_FALLBACK="provider:model" puts a second model behind the chat and agent models: when a call to
+Ollama fails (down, overloaded, timed out), LangChain's with_fallbacks() retries it on the fallback.
+
+    openai:gpt-4o-mini            OpenAI                      uv add langchain-openai
+    anthropic:claude-haiku-5-5    Anthropic                   uv add langchain-anthropic
+    openai:<model name>           a LiteLLM proxy, with LLM_FALLBACK_BASE_URL=http://litellm:4000
+
+The LiteLLM proxy is the production version of this idea: one OpenAI-compatible endpoint in front
+of every provider, with routing, retries, budgets and keys managed in one place, so the app only
+knows one API. The fallback's API key comes from its provider's usual variable (OPENAI_API_KEY,
+ANTHROPIC_API_KEY). A fallback in the cloud means questions and documents leave your network when
+it kicks in; PII_REDACTION=llm limits what goes with them.
+"""
 
 import httpx
 from langchain_core.embeddings import Embeddings
+from langchain_core.language_models import BaseChatModel
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 
 from app.cache.embeddings import CachedEmbeddings
@@ -12,6 +27,8 @@ from app.core.config import (
     EMBED_CACHE_MEMORY_ITEMS,
     EMBED_MODEL,
     GUARD_MODEL,
+    LLM_FALLBACK,
+    LLM_FALLBACK_BASE_URL,
     OLLAMA_TIMEOUT,
     OLLAMA_URL,
 )
@@ -54,13 +71,44 @@ def _embeddings(model: str) -> Embeddings:
     return base
 
 
+def fallback_model(temperature: float) -> BaseChatModel | None:
+    """The LLM_FALLBACK model, or None. Its package is imported only when it's configured."""
+    if not LLM_FALLBACK:
+        return None
+    provider, _, model = LLM_FALLBACK.partition(":")
+    if provider == "openai":
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as e:
+            raise RuntimeError("LLM_FALLBACK=openai:... needs: uv add langchain-openai") from e
+        return ChatOpenAI(model=model, temperature=temperature, base_url=LLM_FALLBACK_BASE_URL or None,
+                          stream_usage=True)  # token counts on the last streamed chunk, like Ollama's
+    if provider == "anthropic":
+        try:
+            from langchain_anthropic import ChatAnthropic
+        except ImportError as e:
+            raise RuntimeError("LLM_FALLBACK=anthropic:... needs: uv add langchain-anthropic") from e
+        return ChatAnthropic(model=model, temperature=temperature)
+    raise ValueError(f"LLM_FALLBACK must start with openai: or anthropic:, not {LLM_FALLBACK!r}")
+
+
+def _with_fallback(primary: ChatOllama, temperature: float):
+    """The primary model, or the primary with the fallback behind it. Fallbacks forward bind_tools,
+    so the agent's tools reach whichever model answers."""
+    fallback = fallback_model(temperature)
+    return primary.with_fallbacks([fallback]) if fallback else primary
+
+
 embeddings = _embeddings(EMBED_MODEL)
-llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0.2, client_kwargs=_TIMEOUT)
+llm = _with_fallback(ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0.2, client_kwargs=_TIMEOUT), 0.2)
 # short, deterministic output for chat titles; the cap stops a runaway answer from blocking Ollama
 title_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=20,
                        client_kwargs=_TIMEOUT)
+# deterministic helper calls with room to write: query rewriting, graph extraction
+utility_llm = ChatOllama(model=CHAT_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=512,
+                         client_kwargs=_TIMEOUT)
 # deterministic, so it picks tools consistently
-agent_llm = ChatOllama(model=AGENT_MODEL, base_url=OLLAMA_URL, temperature=0, client_kwargs=_TIMEOUT)
+agent_llm = _with_fallback(ChatOllama(model=AGENT_MODEL, base_url=OLLAMA_URL, temperature=0, client_kwargs=_TIMEOUT), 0)
 # content safety classifier (app/guardrails/content.py): answers "safe" or "unsafe\nS1,S10"
 guard_llm = ChatOllama(model=GUARD_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=10,
                        client_kwargs=_TIMEOUT) if GUARD_MODEL else None

@@ -1,11 +1,14 @@
+import logging
 import re
+import secrets
 
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 
 from app.api.deps import CurrentUser, limit_per_ip
-from app.core import security
+from app.core import entra, oidc, security
 from app.core.audit import audit
-from app.core.config import RATE_LIMIT_REGISTER
+from app.core.config import COOKIE_SECURE, RATE_LIMIT_REGISTER
 from app.core.errors import Conflict, InvalidInput
 from app.core.logging import set_user_id
 from app.models import User
@@ -13,12 +16,13 @@ from app.repositories import user_store
 from app.schemas.auth import Credentials
 
 router = APIRouter(prefix="/auth")
+log = logging.getLogger(__name__)
 
 USERNAME = re.compile(r"[a-z0-9_.-]{3,32}")
 
 
 def _public(user: User) -> dict:
-    return {"id": user.id, "username": user.username}
+    return {"id": user.id, "username": user.username, "groups": user.groups or []}
 
 
 def _login(response: Response, user: User) -> dict:
@@ -62,12 +66,62 @@ def login(body: Credentials, request: Request, response: Response):
     return _login(response, user)
 
 
+@router.get("/oidc/login")
+def oidc_login():
+    """Start single sign-on: off to the identity provider's login page (app/core/oidc.py)."""
+    if not oidc.enabled():
+        raise HTTPException(404, "Single sign-on is not configured.")
+    url, flow = oidc.start()
+    response = RedirectResponse(url, status_code=302)
+    # 10 minutes to log in. Path "/": behind nginx the browser sees /api/auth/..., in development /auth/...
+    response.set_cookie(oidc.FLOW_COOKIE, security.sign(flow, minutes=10), max_age=600, httponly=True,
+                        samesite="lax", secure=COOKIE_SECURE, path="/")
+    return response
+
+
+@router.get("/oidc/callback")
+def oidc_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """The identity provider sends the browser back here with a one-time code."""
+    flow = security.unsign(request.cookies.get(oidc.FLOW_COOKIE))
+    if error or not code or not flow or not secrets.compare_digest(state, flow.get("state", "")):
+        audit("auth.sso.failure", reason=error or "bad_state")
+        raise HTTPException(400, "Sign-in failed or expired. Please try again.")
+    try:
+        claims, access_token = oidc.finish(code, flow)
+    except Exception:
+        log.exception("SSO token exchange or verification failed")
+        audit("auth.sso.failure", reason="token")
+        raise HTTPException(400, "Sign-in failed. Please try again.") from None
+    try:
+        groups = oidc.groups(claims, access_token)
+    except Exception:  # e.g. Graph down during an Entra groups overage: log in, but with no group access
+        log.exception("could not read the user's groups; continuing without them")
+        groups = []
+    subject = entra.subject(claims) if entra.enabled() else claims["sub"]
+    # an SSO account has no password of its own: a random, never-shown one keeps /auth/login closed to it
+    user = user_store.upsert_sso(subject, oidc.username(claims),
+                                 security.hash_password(secrets.token_urlsafe(32)), groups)
+    set_user_id(user.id)
+    audit("auth.sso.success", username=user.username, groups=len(user.groups or []))
+    response = RedirectResponse("/", status_code=302)  # back to the app, now logged in
+    response.set_cookie(**security.session_cookie(security.make_token(user)))
+    response.delete_cookie(oidc.FLOW_COOKIE, path="/")
+    return response
+
+
 @router.post("/logout")
 def logout(request: Request, response: Response):
     set_user_id(security.user_id_from_token(request.cookies.get(security.COOKIE)))
     audit("auth.logout")
     response.delete_cookie(security.COOKIE, path="/")
-    return {"ok": True}
+    # SSO: the frontend sends the browser here next, or the provider's session logs the user straight back in
+    sso_logout = None
+    if oidc.enabled():
+        try:
+            sso_logout = oidc.logout_url()
+        except Exception:
+            log.warning("could not build the SSO sign-out URL", exc_info=True)
+    return {"ok": True, "sso_logout": sso_logout}
 
 
 @router.get("/me")
