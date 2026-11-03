@@ -8,6 +8,9 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Pluggable text extraction** (`EXTRACTOR`): besides the default pypdf + python-docx, Docling, Unstructured
+  or Azure AI Document Intelligence, which add OCR for scanned PDFs, real tables and PPTX/XLSX/HTML/image
+  files. Optional packages, imported only when chosen; not yet run. `feature/extractors`
 - **Airflow** schedules the import of every source (compose profile `airflow`, UI on :8081): nightly, one
   `DockerOperator` task per source in the `ingest_sources` Variable, running `cli <source> --wait` (new: block
   until the workers have indexed the batches) in a container from the worker image. Not yet run end to end.

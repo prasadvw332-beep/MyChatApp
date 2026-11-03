@@ -105,6 +105,11 @@ INGEST_MAX_ATTEMPTS = int(os.getenv("INGEST_MAX_ATTEMPTS", "3"))  # then the doc
 # a document 'processing' for longer than this is assumed to belong to a dead worker and is retried
 INGEST_LEASE_SECONDS = int(os.getenv("INGEST_LEASE_SECONDS", "600"))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "64"))  # chunks per embedding request
+# Text extraction (app/rag/extractors/): basic (pypdf + python-docx), docling, unstructured or azure.
+# The richer ones also read PPTX, XLSX, HTML and images, and OCR scanned PDFs.
+EXTRACTOR = os.getenv("EXTRACTOR", "basic").lower()
+AZURE_DI_ENDPOINT = os.getenv("AZURE_DI_ENDPOINT", "")  # https://<name>.cognitiveservices.azure.com
+AZURE_DI_KEY = os.getenv("AZURE_DI_KEY", "")
 # S3 source for bulk import (cli.py s3://bucket/prefix); unset = the local MinIO, handy for trying it out.
 # Use a read-only key: the importer only lists and downloads.
 S3_SOURCE_ENDPOINT = os.getenv("S3_SOURCE_ENDPOINT", MINIO_ENDPOINT)  # AWS: s3.amazonaws.com

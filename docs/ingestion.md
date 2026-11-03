@@ -97,6 +97,22 @@ itself. In Kubernetes the same DAG would use `KubernetesPodOperator` (a pod per 
 `DockerOperator`; a plain `CronJob` running `cli <source> --wait` is the lighter alternative when one schedule
 is all you need.
 
+## Extraction
+
+The text of each file comes from an extractor (`backend/app/rag/extractors/`), chosen with `EXTRACTOR`:
+
+| `EXTRACTOR` | Runs | Reads | Good at |
+|---|---|---|---|
+| `basic` (default) | locally: pypdf + python-docx | PDF (text layer), DOCX, TXT, MD | light and fast |
+| `docling` | locally: layout + table models (PyTorch) | + PPTX, XLSX, HTML, images; OCR for scans | reading order, real tables, per-page Markdown |
+| `unstructured` | locally: element partitioning (+ Tesseract/Poppler) | the same | categorised elements, drops headers/footers |
+| `azure` | Azure AI Document Intelligence (cloud) | the same | OCR and layout without local models; billed per page, files leave your network |
+
+All of them return Markdown with `#` headings, so chunking works the same whichever ran. The optional ones are
+imported only when chosen and their packages aren't installed by default (`uv add docling` or
+`uv add "unstructured[all-docs]"`, then rebuild the images). Set the same `EXTRACTOR` on the backend and the
+workers: both extract (uploads in the backend, batches in the workers). None of the three has been run here yet.
+
 **Word files**: `.docx` headings (`Title`, `Heading 1`–`6` styles) become sections, like Markdown headings,
 and tables become `cell | cell` rows in document order. Word has no fixed pages, so DOCX chunks have no page
 number. The older binary `.doc` format isn't supported; save it as `.docx` first.

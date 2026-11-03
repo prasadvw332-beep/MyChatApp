@@ -26,10 +26,18 @@ client = Minio(
     ),
 )
 
-# text/plain for .md too, so browsers show it instead of downloading it
+# text/plain for .md too, so browsers show it instead of downloading it. .html as text/plain on
+# purpose: served as text/html from our own origin, an uploaded page could run scripts (XSS).
 CONTENT_TYPES = {
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".html": "text/plain; charset=utf-8",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".tiff": "image/tiff",
     ".txt": "text/plain; charset=utf-8",
     ".md": "text/plain; charset=utf-8",
 }

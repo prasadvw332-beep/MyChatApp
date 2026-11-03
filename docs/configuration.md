@@ -101,6 +101,9 @@ the first rejection in a window is audited (`rate_limit.exceeded`), every one is
 | `INGEST_MAX_ATTEMPTS` | `3` | then a document is marked failed |
 | `INGEST_LEASE_SECONDS` | `600` | a document "processing" longer than this is assumed abandoned and retried |
 | `EMBED_BATCH_SIZE` | `64` | chunks per embedding request |
+| `EXTRACTOR` | `basic` | `basic`, `docling`, `unstructured` or `azure` (see [ingestion](ingestion.md#extraction)) |
+| `AZURE_DI_ENDPOINT` | empty | Document Intelligence endpoint, for `EXTRACTOR=azure` |
+| `AZURE_DI_KEY` | empty | **Secret** |
 | `S3_SOURCE_ENDPOINT` | `MINIO_ENDPOINT` | bucket to import from with `cli s3://bucket/prefix`; AWS: `s3.amazonaws.com` |
 | `S3_SOURCE_ACCESS_KEY` | `MINIO_ACCESS_KEY` | **Secret**; use a read-only key |
 | `S3_SOURCE_SECRET_KEY` | `MINIO_SECRET_KEY` | **Secret** |
