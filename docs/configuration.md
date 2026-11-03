@@ -166,6 +166,11 @@ All off by default; see [production-rag.md](production-rag.md) for what each doe
 | `OIDC_GROUPS_CLAIM` | `groups` | ID-token claim copied into the user's groups |
 | `REDIS_URL` | empty | rate-limit counters in Redis instead of PostgreSQL |
 | `INGEST_WEBHOOK_TOKEN` | empty (off) | **Secret**; Bearer token for `POST /ingest/events/s3`; 32+ characters in production |
+| `KAFKA_BOOTSTRAP` | empty | Kafka brokers for `python -m app.ingestion.kafka_consumer`, e.g. `kafka:9092` |
+| `KAFKA_TOPIC` | `bucket-events` | the topic MinIO/S3 publishes bucket events to |
+| `KAFKA_GROUP` | `ingest` | consumer group: consumers in it share the partitions |
+| `KAFKA_DLQ_TOPIC` | `bucket-events.dlq` | where events that keep failing go |
+| `KAFKA_MAX_ATTEMPTS` | `5` | tries per event before dead-lettering it |
 
 ## Advanced
 

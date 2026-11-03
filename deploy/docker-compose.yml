@@ -134,6 +134,48 @@ services:
       - frontend
     restart: unless-stopped
 
+  # ---------- Kafka: bucket events buffered in a topic (backend/app/ingestion/kafka_consumer.py) ----------
+  # Not started by a plain `up`:  docker compose -f deploy/docker-compose.yml --profile kafka up -d
+  # Then point MinIO at it once (the commands are at the top of kafka_consumer.py).
+  # One broker in KRaft mode (Kafka's own consensus, no ZooKeeper): fine for learning. Production runs
+  # 3+ brokers with replication factor 3, so a broker can fail without losing events (or a managed
+  # Kafka: Amazon MSK, Confluent Cloud; in Kubernetes the Strimzi operator).
+  kafka:
+    profiles: [kafka]
+    image: apache/kafka:4.0.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller           # one process does both (no separate controllers)
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092   # the address clients are told to use
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1         # one broker: no replicas possible
+      KAFKA_NUM_PARTITIONS: 3                           # new topics: up to 3 consumers in parallel
+      KAFKA_LOG_RETENTION_HOURS: 168                    # events kept 7 days: room for an outage, and replays
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  # Same image as the workers, another command; scale up to the topic's partition count (3)
+  kafka-consumer:
+    profiles: [kafka]
+    build: ../backend
+    command: ["python", "-m", "app.ingestion.kafka_consumer"]
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/mychatapp
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      QDRANT_URL: http://qdrant:6333        # deletes remove chunks
+      OLLAMA_URL: http://ollama:11434
+      LOG_FORMAT: json
+    stop_grace_period: 2m                   # finish the current event, commit, leave the group
+    depends_on:
+      - kafka
+      - worker                              # nothing would index what it queues
+
   # ---------- vLLM: an open model on an NVIDIA GPU (deploy/k8s/gpu/vllm.yaml explains the flags) ----------
   # Not started by a plain `up`:  docker compose -f deploy/docker-compose.yml --profile gpu up -d vllm
   # Needs an NVIDIA GPU with the NVIDIA Container Toolkit (Docker Desktop: WSL2 + a recent driver).
@@ -353,3 +395,4 @@ volumes:
   prometheus-data:
   grafana-data:
   hf-cache:
+  kafka-data:

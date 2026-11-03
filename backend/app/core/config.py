@@ -205,6 +205,12 @@ REDIS_URL = os.getenv("REDIS_URL", "")
 
 # Event-driven ingestion: S3/MinIO bucket notifications to POST /ingest/events/s3, with this bearer token
 INGEST_WEBHOOK_TOKEN = os.getenv("INGEST_WEBHOOK_TOKEN", "")
+# ... or through Kafka (python -m app.ingestion.kafka_consumer): MinIO/S3 publishes, a consumer group reads
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "")  # e.g. kafka:9092; empty = the consumer refuses to start
+KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bucket-events")
+KAFKA_GROUP = os.getenv("KAFKA_GROUP", "ingest")  # consumers in one group share the topic's partitions
+KAFKA_DLQ_TOPIC = os.getenv("KAFKA_DLQ_TOPIC", "bucket-events.dlq")  # events that kept failing
+KAFKA_MAX_ATTEMPTS = int(os.getenv("KAFKA_MAX_ATTEMPTS", "5"))
 
 # ---------- Advanced (docs/advanced.md). All off by default. ----------
 

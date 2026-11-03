@@ -8,6 +8,10 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Kafka ingestion**: bucket events through a Kafka topic (compose profile `kafka`: KRaft broker + consumer).
+  The consumer commits after handling (at-least-once), retries with backoff, dead-letters poison events,
+  scales by consumer group and shuts down cleanly; the webhook and the consumer share
+  `app/ingestion/events.py`. Not yet run. `feature/kafka-ingestion`
 - **Advanced**, each off until configured (docs/advanced.md): `evals/compare.py` (RAGAS per feature
   configuration), a quality gate (`evals/gate.py`, `.github/workflows/evals.yml`), a k6 load test with SLOs,
   agent evaluation, a red-team script (OWASP LLM Top 10), vLLM on GPU (compose profile `gpu`,

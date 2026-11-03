@@ -248,5 +248,22 @@ endpoint is off. Events arrive "at least once", and that's harmless here because
 content hash.
 
 Keep the nightly `--sync` import too: events give freshness, and the sync repairs whatever events were lost.
-At scale, events go through a queue (SQS, Kafka) that the app consumes at its own pace. The MinIO setup
-commands are at the top of `routes/events.py`.
+The MinIO setup commands are at the top of `routes/events.py`.
+
+### Through Kafka
+
+At scale the bucket publishes to a Kafka topic instead, and `python -m app.ingestion.kafka_consumer` reads it
+at the pace the workers can index (compose profile `kafka`: one KRaft broker and the consumer). Both paths
+share the same handler (`app/ingestion/events.py`).
+
+| Problem | How the consumer handles it |
+|---|---|
+| A burst of 50,000 uploads | They wait in the topic (7 days of retention) instead of flooding an endpoint |
+| A crash mid-event | Offsets are committed only after an event is handled (at-least-once); handling is idempotent |
+| MinIO briefly down | Retries with backoff, up to `KAFKA_MAX_ATTEMPTS`; the partition waits, so order is kept |
+| A poison message | Goes to the dead-letter topic `bucket-events.dlq` with the error, and the consumer moves on |
+| More throughput | More consumers in the same group, up to the number of partitions |
+| A deploy or scale-down | SIGTERM finishes the event, commits, and leaves the group cleanly |
+
+It needs `uv add confluent-kafka`. Production runs 3+ brokers with replication, or a managed Kafka (Amazon MSK,
+Confluent Cloud, or Strimzi in Kubernetes).
