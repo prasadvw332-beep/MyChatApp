@@ -9,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.api.deps import CurrentUser, limit_per_user
 from app.cache import semantic
+from app.clients import router as model_router
 from app.clients.llm import llm, title_llm
 from app.core import acl, llm_tracing, metrics
 from app.core.config import CHAT_MODEL, RATE_LIMIT_CHAT
@@ -19,7 +20,7 @@ from app.guardrails.content import WITHHELD, AnswerGuard
 from app.models import User
 from app.prompts import registry
 from app.prompts.title import TITLE_SHOTS, TITLE_SYSTEM
-from app.rag import graph, knowledge_base, query
+from app.rag import graph, knowledge_base, query, structured
 from app.rag.answer import build_messages, cite
 from app.schemas.chat import ChatRequest
 from app.services import usage
@@ -90,6 +91,10 @@ async def chat(req: ChatRequest, user: User = CurrentUser):
     messages = build_messages(req.messages, docs, facts, rag_prompt)
     sources = cite(docs)
     trace = llm_tracing.config("chat", user.id, request_id(), prompt_version=version)  # {} unless Langfuse is set
+    # small or large model for this question (app/clients/router.py); just `llm` while routing is off
+    model, tier = llm, "small"
+    if model_router.enabled():
+        model, tier = await model_router.pick(question, sum(len(d.page_content) for d in docs))
 
     async def token_stream():
         started, first = time.perf_counter(), True
@@ -97,7 +102,7 @@ async def chat(req: ChatRequest, user: User = CurrentUser):
         guard = AnswerGuard(question)
         answer: list[str] = []
         try:
-            async for chunk in llm.astream(messages, **trace):
+            async for chunk in model.astream(messages, **trace):
                 if first:
                     metrics.llm_first_token.labels("chat").observe(time.perf_counter() - started)
                     first = False
@@ -125,5 +130,21 @@ async def chat(req: ChatRequest, user: User = CurrentUser):
         token_stream(),
         media_type="text/plain; charset=utf-8",
         headers={"X-Sources": json.dumps(sources), "X-Cache": "miss" if cacheable else "off",
-                 "X-Prompt-Version": version},
+                 "X-Prompt-Version": version, "X-Model-Tier": tier},
     )
+
+
+@router.post("/chat/structured", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
+async def chat_structured(req: ChatRequest, user: User = CurrentUser):
+    """The answer as validated JSON (answer, found_in_documents, confidence, citations): for programs
+    calling the chatbot, not people. See app/rag/structured.py."""
+    question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
+    await check_question(question)
+    try:
+        docs = await asyncio.to_thread(knowledge_base.retrieve, question, principals=acl.principals(user))
+    except Exception as e:
+        raise DependencyUnavailable("Document search") from e
+    try:
+        return (await structured.answer(question, docs)).model_dump()
+    except structured.StructuredOutputError as e:
+        raise DependencyUnavailable("The language model") from e

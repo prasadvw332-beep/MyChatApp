@@ -1,0 +1,91 @@
+# Answer-quality gate: run the RAG evaluation and fail when quality drops below the baseline.
+#
+# ci-cd.yml proves the code works; this proves the *answers* didn't get worse. It runs when the code
+# that shapes answers changes (retrieval, prompts, models), nightly (to catch drift: a new model tag,
+# a dependency update), and on demand. Slow (CPU-only models, minutes per question), so it's a
+# separate workflow, not part of every push.
+#
+# Needs the documents the questions are about in backend/evals/corpus/ (the dataset's "source"
+# files), and an accepted baseline in backend/evals/baseline.json (evals/gate.py --update-baseline).
+
+name: Evals
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/app/rag/**
+      - backend/app/prompts/**
+      - backend/app/clients/llm.py
+      - backend/app/guardrails/**
+      - backend/evals/**
+  schedule:
+    - cron: "0 3 * * *"        # nightly, 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  rag-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mychatapp
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+      qdrant:
+        image: qdrant/qdrant:v1.15.1
+        ports: ["6333:6333"]
+      ollama:
+        image: ollama/ollama:0.11.4
+        ports: ["11434:11434"]
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/mychatapp
+      QDRANT_URL: http://localhost:6333
+      OLLAMA_URL: http://localhost:11434
+      MINIO_ENDPOINT: localhost:9000
+      CHAT_MODEL: llama3.2:1b
+      EMBED_MODEL: nomic-embed-text
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: MinIO (a service container can't be given its "server /data" command)
+        run: docker run -d -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin123 pgsty/minio:latest server /data
+      - name: Pull the models
+        run: |
+          for m in llama3.2:1b nomic-embed-text; do
+            curl -sf http://localhost:11434/api/pull -d "{\"name\": \"$m\", \"stream\": false}" > /dev/null
+          done
+      - name: Install (with the dev group: ragas)
+        run: uv sync --frozen
+      - name: Index the eval corpus
+        run: |
+          test -n "$(ls evals/corpus 2>/dev/null)" || { echo "::error::put the dataset's documents in backend/evals/corpus/"; exit 1; }
+          uv run python - <<'EOF'
+          from pathlib import Path
+          from app.core.db import init_db
+          from app.rag import knowledge_base
+          init_db()
+          for f in sorted(Path("evals/corpus").iterdir()):
+              if f.name.startswith("."):
+                  continue
+              print(knowledge_base.ingest(f.name, f.read_bytes()))
+          EOF
+      - name: Evaluate
+        run: uv run python -m evals.run_ragas --json-out eval-result.json
+      - name: Quality gate
+        run: uv run python -m evals.gate eval-result.json
+      - name: Keep the result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-result
+          path: backend/eval-result.json

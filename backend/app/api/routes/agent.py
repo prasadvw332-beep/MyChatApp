@@ -8,7 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agents import loop, memory, sql_tool
+from app.agents import loop, memory, sql_tool, supervisor
 from app.api.deps import CurrentUser, limit_per_user
 from app.core import llm_tracing, metrics
 from app.core.config import AGENT_MEMORY, RATE_LIMIT_CHAT
@@ -91,3 +91,13 @@ async def _stream(run, question: str):
 def _withheld(notice: str) -> str:
     """Tells the frontend to replace the answer (and its sources) with the notice."""
     return json.dumps({"type": "withheld", "detail": notice}) + "\n"
+
+
+@router.post("/agent/team", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
+async def agent_team(req: ChatRequest, request: Request, user: User = CurrentUser):
+    """A supervisor and specialist agents (app/agents/supervisor.py). Same NDJSON events as /agent/chat,
+    plus {"type": "handoff"} each time the supervisor gives a specialist a task."""
+    question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
+    await check_question(question)
+    return StreamingResponse(_stream(supervisor.run(question, _tools(request, user)), question),
+                             media_type="application/x-ndjson")

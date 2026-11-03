@@ -1,6 +1,18 @@
 // Login / sign-up screen. The session is an httpOnly cookie set by the backend,
 // so the page only needs to know who is logged in.
 import { API_BASE, $, errorFrom } from "../lib.js";
+import { state } from "../state.js";
+
+// SSO button and upload visibility depend on what the backend has switched on
+async function loadFeatures() {
+  try {
+    const res = await fetch(API_BASE + "/auth/config");
+    if (res.ok) Object.assign(state.features, await res.json());
+  } catch {}
+  const sso = $("auth-sso");
+  sso.hidden = !state.features.sso;
+  sso.href = API_BASE + "/auth/oidc/login"; // a full-page redirect to the identity provider, not a fetch
+}
 
 async function post(path, body) {
   const res = await fetch(API_BASE + path, {
@@ -14,6 +26,7 @@ async function post(path, body) {
 
 // Resolves with the user once logged in (immediately if a session cookie is already valid)
 export async function requireLogin() {
+  await loadFeatures();
   try {
     const res = await fetch(API_BASE + "/auth/me");
     if (res.ok) {
@@ -66,8 +79,11 @@ export async function requireLogin() {
 }
 
 export async function logout() {
-  try { await post("/auth/logout"); } catch {}
-  location.reload(); // drop all in-memory state of the previous user
+  let ssoLogout = null;
+  try { ({ sso_logout: ssoLogout } = await post("/auth/logout")); } catch {}
+  // SSO: end the identity provider's session too, or it would log the user straight back in
+  if (ssoLogout) location.href = ssoLogout;
+  else location.reload(); // drop all in-memory state of the previous user
 }
 
 function showScreen(show) {

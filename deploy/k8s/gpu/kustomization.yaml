@@ -1,0 +1,4 @@
+# Optional GPU model server, applied on top of an overlay: kubectl apply -k deploy/k8s/gpu
+# Then point the backend at it: VLLM_URL=http://vllm:8000/v1, ROUTER_LARGE_MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ
+resources:
+  - vllm.yaml

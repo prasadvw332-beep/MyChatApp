@@ -148,6 +148,14 @@ async function generate() {
     reply.requestId = res.headers.get("X-Request-ID") || undefined;
     if (agent) {
       await readAgentEvents(res, reply, repaint);
+      // human-in-the-loop: the run paused before a tool that needs the user's OK (AGENT_APPROVAL_TOOLS)
+      while (reply.approval) {
+        const { thread_id: threadId, calls } = reply.approval;
+        delete reply.approval;
+        const approved = await askApproval(calls);
+        const more = await api.resumeAgent(threadId, approved, state.controller.signal);
+        await readAgentEvents(more, reply, repaint);
+      }
     } else {
       try {
         const sources = JSON.parse(res.headers.get("X-Sources") || "[]");
@@ -207,7 +215,7 @@ export function applyChatText(text, reply) {
 
 // /agent/chat streams one JSON event per line (see backend/app/agents/loop.py)
 async function readAgentEvents(res, reply, changed) {
-  reply.steps = [];
+  reply.steps ??= []; // kept across a pause for approval: the resumed run adds to the same steps
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -234,7 +242,39 @@ export function applyAgentEvent(e, reply) {
     reply.content += (reply.content ? "\n\n" : "") + `[${e.detail}]`;
   } else if (e.type === "withheld") {
     withhold(reply, e.detail);
+  } else if (e.type === "approval_required") {
+    reply.approval = { thread_id: e.thread_id, calls: e.calls };
   }
+}
+
+// The exact tool calls, so the user approves what will really run (textContent: never rendered as HTML)
+function askApproval(calls) {
+  return new Promise((resolve) => {
+    const dlg = el("dialog", "approval");
+    dlg.append(el("h2", null, "Allow the assistant to do this?"));
+    for (const c of calls) dlg.append(el("pre", "approval-call", `${c.name}
+${JSON.stringify(c.args, null, 2)}`));
+    const row = el("div", "approval-actions");
+    const no = el("button", "btn", "Decline");
+    const yes = el("button", "btn primary", "Allow");
+    no.type = yes.type = "button";
+    const done = (ok) => {
+      dlg.close();
+      dlg.remove();
+      resolve(ok);
+    };
+    no.addEventListener("click", () => done(false));
+    yes.addEventListener("click", () => done(true));
+    dlg.addEventListener("cancel", (e) => { // Esc = decline
+      e.preventDefault();
+      done(false);
+    });
+    row.append(no, yes);
+    dlg.append(row);
+    document.body.append(dlg);
+    dlg.showModal();
+    no.focus(); // the safe choice has the focus
+  });
 }
 
 // Ask the model for a short chat title: as soon as there is a real question,

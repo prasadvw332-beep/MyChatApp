@@ -59,10 +59,21 @@ export const sendFeedback = (body) =>
 /* ---------- documents ---------- */
 export const listDocuments = async () => (await request("/documents")).json();
 
-export async function uploadDocument(file) {
+// visibility (with document permissions on): "public" for everyone, "private" for only me
+export async function uploadDocument(file, visibility = "public") {
   const body = new FormData();
   body.append("file", file);
+  body.append("visibility", visibility);
   return (await request("/upload", { method: "POST", body })).json();
 }
+
+// Continue an agent run that stopped for approval ({"type": "approval_required"}); streams like /agent/chat
+export const resumeAgent = (threadId, approved, signal) =>
+  request("/agent/resume", {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ thread_id: threadId, approved }),
+    signal,
+  });
 
 export const deleteDocument = (docId) => request(`/documents/${enc(docId)}`, { method: "DELETE" });

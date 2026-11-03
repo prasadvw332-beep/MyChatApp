@@ -167,6 +167,21 @@ All off by default; see [production-rag.md](production-rag.md) for what each doe
 | `REDIS_URL` | empty | rate-limit counters in Redis instead of PostgreSQL |
 | `INGEST_WEBHOOK_TOKEN` | empty (off) | **Secret**; Bearer token for `POST /ingest/events/s3`; 32+ characters in production |
 
+## Advanced
+
+All off by default; see [advanced.md](advanced.md).
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `LLM_ROUTER` | `off` | `heuristic` or `llm`: hard questions go to `ROUTER_LARGE_MODEL` |
+| `ROUTER_LARGE_MODEL` | empty | an Ollama model, or a vLLM model name with `VLLM_URL` |
+| `VLLM_URL` | empty | OpenAI-compatible vLLM endpoint, e.g. `http://vllm:8000/v1` |
+| `VISION_MODEL` | empty | Ollama vision model (e.g. `llava:7b`): describes images in PDFs, allows image uploads |
+| `A2A_TOKEN` | empty (off) | **Secret**; bearer token for `POST /a2a` and the agent card |
+| `MCP_HTTP_TOKEN` | empty | **Secret**; required by `python -m app.mcp_server --http` (32+ characters) |
+| `RETENTION_CHAT_DAYS` | `0` (forever) | `app.maintenance.retention` deletes chats untouched this long |
+| `RETENTION_LOG_DAYS` | `0` (forever) | ... and usage, prompt-run and feedback rows older than this |
+
 ## Evaluation
 
 | Variable | Default | Meaning |

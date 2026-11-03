@@ -206,9 +206,26 @@ REDIS_URL = os.getenv("REDIS_URL", "")
 # Event-driven ingestion: S3/MinIO bucket notifications to POST /ingest/events/s3, with this bearer token
 INGEST_WEBHOOK_TOKEN = os.getenv("INGEST_WEBHOOK_TOKEN", "")
 
+# ---------- Advanced (docs/advanced.md). All off by default. ----------
+
+# Model routing: easy questions to the default model, hard ones to a larger one (app/clients/router.py)
+LLM_ROUTER = os.getenv("LLM_ROUTER", "off").lower()  # off | heuristic | llm
+ROUTER_LARGE_MODEL = os.getenv("ROUTER_LARGE_MODEL", "")  # an Ollama model, or a vLLM model with VLLM_URL
+VLLM_URL = os.getenv("VLLM_URL", "")  # OpenAI-compatible endpoint, e.g. http://vllm:8000/v1
+# Multimodal: a vision model on Ollama (e.g. llava:7b, qwen2.5vl:7b) describes images in PDFs and image files
+VISION_MODEL = os.getenv("VISION_MODEL", "")
+# Agent-to-agent (A2A): publish the agent at /a2a for other agents to call, with this bearer token
+A2A_TOKEN = os.getenv("A2A_TOKEN", "")
+# MCP over HTTP (python -m app.mcp_server --http): clients must send this bearer token
+MCP_HTTP_TOKEN = os.getenv("MCP_HTTP_TOKEN", "")
+# Data retention (python -m app.maintenance.retention): delete older data; 0 = keep forever
+RETENTION_CHAT_DAYS = int(os.getenv("RETENTION_CHAT_DAYS", "0"))
+RETENTION_LOG_DAYS = int(os.getenv("RETENTION_LOG_DAYS", "0"))  # usage, prompt runs, feedback
+
 for _name, _allowed in [("RERANK", "off cross_encoder api"), ("QUERY_REWRITE", "off condense multi hyde"),
                         ("PII_REDACTION", "off index llm both"), ("PII_ENGINE", "regex presidio"),
-                        ("AGENT_CHECKPOINTER", "memory postgres")]:
+                        ("AGENT_CHECKPOINTER", "memory postgres"),
+                        ("LLM_ROUTER", "off heuristic llm")]:
     if globals()[_name] not in _allowed.split():
         raise ValueError(f"{_name} must be one of: {_allowed.replace(' ', ', ')}")
 

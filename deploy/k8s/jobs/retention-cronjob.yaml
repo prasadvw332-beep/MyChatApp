@@ -1,0 +1,36 @@
+# Data retention, daily: deletes chats and analytics older than RETENTION_* (app/maintenance/retention.py).
+#
+#   kubectl apply -f deploy/k8s/jobs/retention-cronjob.yaml
+#   kubectl create job --from=cronjob/retention retention-now -n mychatapp     # run it once, now
+#
+# Same image and settings as the backend; only the command differs. Set RETENTION_CHAT_DAYS and
+# RETENTION_LOG_DAYS in the backend-config ConfigMap (0 = keep forever, the default).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention
+  namespace: mychatapp
+spec:
+  schedule: "30 2 * * *"            # 02:30 every night
+  concurrencyPolicy: Forbid         # never two runs at once
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: retention
+              image: mychatapp-backend:1.0
+              command: ["python", "-m", "app.maintenance.retention"]
+              envFrom:
+                - configMapRef:
+                    name: backend-config
+                - secretRef:
+                    name: backend-secrets
+              resources:
+                requests: { cpu: 50m, memory: 128Mi }
+                limits: { memory: 256Mi }

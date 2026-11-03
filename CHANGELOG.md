@@ -8,6 +8,14 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Advanced**, each off until configured (docs/advanced.md): `evals/compare.py` (RAGAS per feature
+  configuration), a quality gate (`evals/gate.py`, `.github/workflows/evals.yml`), a k6 load test with SLOs,
+  agent evaluation, a red-team script (OWASP LLM Top 10), vLLM on GPU (compose profile `gpu`,
+  `deploy/k8s/gpu`) with model routing (`LLM_ROUTER`), a supervisor multi-agent team (`/agent/team`), A2A
+  (agent card + `/a2a`), MCP over HTTP with a bearer token, multimodal indexing (`VISION_MODEL`), structured
+  outputs (`/chat/structured`), GDPR export/erasure (`/me/export`, `DELETE /me`) and a retention job with a
+  CronJob, fine-tuning scripts (embeddings, QLoRA), and the frontend for approvals, upload visibility and
+  SSO. Not yet run end to end. `feature/advanced`
 - **Production RAG features**, each off until configured (docs/production-rag.md): hybrid search (BM25 sparse
   vectors + RRF), reranking (cross-encoder or API), query rewriting (condense / multi-query / HyDE), GraphRAG
   (entity-relation facts), document ACLs filtered inside the vector search, `cli --sync` deletion sync with

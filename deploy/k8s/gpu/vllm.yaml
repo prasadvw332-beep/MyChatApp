@@ -1,0 +1,104 @@
+# vLLM: the production way to serve an open model on a GPU (an OpenAI-compatible API).
+#
+#   kubectl apply -k deploy/k8s/gpu        (on a cluster with GPU nodes; see below)
+#
+# Ollama is easy and runs anywhere, but serves requests mostly one after another. vLLM is built for
+# throughput: continuous batching (new requests join the running batch every token, instead of waiting
+# for it to finish) and PagedAttention (the KV cache in pages, like virtual memory, so many more
+# requests fit in GPU memory). On the same GPU that's typically several times the tokens per second
+# under load. The backend talks to it with ROUTER_LARGE_MODEL / VLLM_URL (app/clients/router.py).
+#
+# Settings worth knowing:
+#   --quantization awq           weights in 4 bits: a 7B model in ~5 GB instead of ~15 GB, little quality loss
+#   --enable-prefix-caching      requests that start the same (our long system prompt + similar context) reuse
+#                                the computed KV cache: lower latency, more throughput (prompt caching)
+#   --max-model-len 8192         the context window to reserve memory for; longer = fewer requests at once
+#   --gpu-memory-utilization     share of the GPU vLLM takes for weights + KV cache
+#
+# GPU nodes need the NVIDIA device plugin (or the GPU Operator) so pods can request nvidia.com/gpu, and are
+# usually tainted so only GPU work lands on them: the toleration below lets this pod in. On EKS: a managed
+# node group with g5/g6 instances and the EKS GPU-optimized AMI (deploy/terraform: add a second node group).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vllm-hf-cache
+  namespace: mychatapp
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 30Gi           # downloaded model weights, kept across restarts
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm
+  namespace: mychatapp
+spec:
+  replicas: 1                 # one per GPU; scale by adding GPUs (and replicas), not CPU
+  strategy:
+    type: Recreate            # a new pod can't start while the old one holds the GPU
+  selector:
+    matchLabels:
+      app: vllm
+  template:
+    metadata:
+      labels:
+        app: vllm
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.10.1
+          args:
+            - --model=Qwen/Qwen2.5-7B-Instruct-AWQ
+            - --quantization=awq
+            - --enable-prefix-caching
+            - --max-model-len=8192
+            - --gpu-memory-utilization=0.90
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+              memory: 24Gi
+            requests:
+              cpu: "2"
+              memory: 16Gi
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /root/.cache/huggingface
+            - name: shm
+              mountPath: /dev/shm           # PyTorch uses shared memory; the default 64 MB is too small
+          startupProbe:                     # first start downloads and loads the model: minutes
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 10
+            failureThreshold: 90
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            periodSeconds: 10
+      volumes:
+        - name: hf-cache
+          persistentVolumeClaim:
+            claimName: vllm-hf-cache
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm
+  namespace: mychatapp
+spec:
+  selector:
+    app: vllm
+  ports:
+    - port: 8000
+      targetPort: 8000

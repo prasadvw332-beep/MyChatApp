@@ -11,6 +11,7 @@
 | [guardrails.md](guardrails.md) | understand how prompt injection and harmful content are stopped, and how to turn on content safety |
 | [agent-mode.md](agent-mode.md) | understand the tool-using agent and its MCP servers |
 | [evaluation.md](evaluation.md) | measure answer quality with RAGAS |
+| [advanced.md](advanced.md) | compare features with evals, gate quality in CI, load-test, serve on GPUs, run agent teams, red-team, handle GDPR, fine-tune |
 | [production-rag.md](production-rag.md) | turn on hybrid search, reranking, permissions, SSO, agent approval and the other production features |
 | [decisions/](decisions/) | know *why* things are built the way they are |
 | [../deploy/README.md](../deploy/README.md) | run it with Docker Compose or Kubernetes, and how CI/CD deploys it |

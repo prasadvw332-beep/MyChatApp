@@ -5,4 +5,5 @@ export const state = {
   chat: null, // the open chat
   controller: null, // AbortController, set while a reply is streaming
   agentMode: false, // replies come from /agent/chat, where the model picks tools itself
+  features: { sso: false, acl: false }, // what the backend has switched on (GET /auth/config)
 };

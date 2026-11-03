@@ -18,7 +18,7 @@ imported only when chosen, so the default install doesn't need their (large) pac
 import importlib
 import os
 
-from app.core.config import EXTRACTOR
+from app.core.config import EXTRACTOR, VISION_MODEL
 from app.core.errors import InvalidInput
 
 Page = tuple[int | None, str]  # (page number, text); None when the format has no fixed pages
@@ -28,8 +28,10 @@ if EXTRACTOR not in EXTRACTORS:
     raise ValueError(f"EXTRACTOR={EXTRACTOR!r}: use one of {', '.join(EXTRACTORS)}")
 
 BASIC_TYPES = {".pdf", ".docx", ".txt", ".md"}
-RICH_TYPES = {".pptx", ".xlsx", ".html", ".png", ".jpg", ".jpeg", ".tiff"}  # docling, unstructured, azure
-SUPPORTED = BASIC_TYPES | (RICH_TYPES if EXTRACTOR != "basic" else set())
+IMAGE_TYPES = {".png", ".jpg", ".jpeg", ".tiff"}
+RICH_TYPES = {".pptx", ".xlsx", ".html", *IMAGE_TYPES}  # docling, unstructured, azure
+# basic + a vision model (VISION_MODEL) reads images too: described by the model (app/rag/vision.py)
+SUPPORTED = BASIC_TYPES | (RICH_TYPES if EXTRACTOR != "basic" else IMAGE_TYPES if VISION_MODEL else set())
 
 
 class UnreadableDocument(InvalidInput, ValueError):

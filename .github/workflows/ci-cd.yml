@@ -39,7 +39,7 @@ jobs:
         with:
           enable-cache: true
       - name: Lint
-        run: uvx ruff check app tests evals migrations
+        run: uvx ruff check app tests evals migrations finetune
       - name: Unit tests
         # --no-dev skips ragas (heavy, evals only); --group test adds pytest
         run: uv run --frozen --no-dev --group test pytest -q

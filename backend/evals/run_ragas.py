@@ -37,7 +37,7 @@ from app.clients.llm import llm
 from app.core.config import CHAT_MODEL, EMBED_MODEL, OLLAMA_URL
 from app.core.db import SessionLocal, init_db
 from app.models import EvalRun
-from app.rag import knowledge_base
+from app.rag import graph, knowledge_base, query
 from app.rag.answer import build_messages
 from app.schemas.chat import Message
 
@@ -63,10 +63,14 @@ def load_dataset(path: Path = DATASET, limit: int | None = None) -> list[dict]:
 
 
 async def generate(rows: list[dict], progress: Progress) -> None:
-    """Fill in response + retrieved contexts for each row, exactly as /chat would."""
+    """Fill in response + retrieved contexts for each row, exactly as /chat would (query rewriting and
+    graph facts included, so evals/compare.py measures the features that are switched on)."""
     for i, row in enumerate(rows, 1):
-        docs = await asyncio.to_thread(knowledge_base.retrieve, row["question"])
-        messages = build_messages([Message(role="user", content=row["question"])], docs)
+        history = [Message(role="user", content=row["question"])]
+        queries = await query.search_queries(history)
+        docs = await asyncio.to_thread(knowledge_base.retrieve, row["question"], queries=queries)
+        facts = await asyncio.to_thread(graph.facts, queries[0]) if graph.enabled() else []
+        messages = build_messages(history, docs, facts)
         row["response"] = (await llm.ainvoke(messages)).content
         row["contexts"] = [
             {"text": d.page_content, "source": d.metadata.get("source"), "page": d.metadata.get("page")}
@@ -235,6 +239,7 @@ def main() -> None:
     p.add_argument("--dataset", type=Path, default=DATASET)
     p.add_argument("--metrics", nargs="+", choices=ALL_METRICS, default=DEFAULT_METRICS)
     p.add_argument("--limit", type=int, help="only evaluate the first N questions")
+    p.add_argument("--json-out", type=Path, help="also write the result to this file (evals/compare.py, evals/gate.py)")
     args = p.parse_args()
 
     def progress(phase: str, done: int, total: int) -> None:
@@ -253,6 +258,8 @@ def main() -> None:
         print(f"\n  {result['no_context']} question(s) retrieved no chunks (best score < MIN_SCORE); "
               "context metrics are skipped for them.")
     print(f"\nSaved run {result['id']} to PostgreSQL  ({result['duration_s']}s)")
+    if args.json_out:
+        args.json_out.write_text(json.dumps(result, indent=2, default=str), encoding="utf-8")
 
 
 if __name__ == "__main__":

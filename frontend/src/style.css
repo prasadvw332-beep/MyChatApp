@@ -575,3 +575,16 @@ body.dragging #dropzone { display: grid; }
 .link:hover { text-decoration: underline; }
 .side-user { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); font-size: 13px; }
 .side-user .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* agent approval (human-in-the-loop) */
+.approval { max-width: 520px; width: calc(100% - 32px); border: 1px solid var(--border, #ccc); border-radius: 12px;
+  background: var(--bg); color: var(--text); padding: 20px; }
+.approval::backdrop { background: rgba(0, 0, 0, .45); }
+.approval h2 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+.approval-call { margin: 0 0 10px; padding: 10px; border-radius: 8px; background: var(--hover); font-size: 12px;
+  white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
+.approval-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+/* who can see an upload (document permissions) */
+.visibility { font: inherit; font-size: 12px; color: var(--muted); background: transparent;
+  border: 1px solid var(--border, #ccc); border-radius: 6px; padding: 2px 4px; }
+#auth-sso { text-align: center; text-decoration: none; }

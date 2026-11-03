@@ -2,6 +2,7 @@
 // Upload progress is shown in this list, where the files end up.
 import * as api from "../api.js";
 import { $, el } from "../lib.js";
+import { state } from "../state.js";
 import { load, store } from "../storage.js";
 import { docIcon, ICON } from "../ui/icons.js";
 import { confirmDelete } from "../ui/widgets.js";
@@ -123,7 +124,7 @@ async function uploadFiles(files) {
     p.state = "busy";
     renderDocs();
     try {
-      const out = await api.uploadDocument(file);
+      const out = await api.uploadDocument(file, $("upload-visibility").value);
       pending = pending.filter((x) => x !== p);
       fresh.add(out.doc_id);
       setTimeout(() => {
@@ -165,6 +166,7 @@ function initDragAndDrop() {
 export function initDocuments() {
   setDocsCollapsed(load("docsCollapsed", false));
   $("docs-toggle").addEventListener("click", () => setDocsCollapsed(!docsSection.classList.contains("collapsed")));
+  $("upload-visibility").hidden = !state.features.acl; // only meaningful with document permissions on
   $("upload").addEventListener("click", pickFiles);
   $("attach").addEventListener("click", pickFiles);
   fileInput.addEventListener("change", () => {

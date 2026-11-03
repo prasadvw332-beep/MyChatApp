@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from app.api.deps import CurrentUser, limit_per_ip
 from app.core import entra, oidc, security
 from app.core.audit import audit
-from app.core.config import COOKIE_SECURE, RATE_LIMIT_REGISTER
+from app.core.config import ACL_ENABLED, COOKIE_SECURE, RATE_LIMIT_REGISTER
 from app.core.errors import Conflict, InvalidInput
 from app.core.logging import set_user_id
 from app.models import User
@@ -64,6 +64,12 @@ def login(body: Credentials, request: Request, response: Response):
     set_user_id(user.id)
     audit("auth.login.success", username=username, ip=ip)
     return _login(response, user)
+
+
+@router.get("/config")
+def auth_config():
+    """What the login page and the app should offer: an SSO button, a visibility choice on upload."""
+    return {"sso": oidc.enabled(), "acl": ACL_ENABLED}
 
 
 @router.get("/oidc/login")

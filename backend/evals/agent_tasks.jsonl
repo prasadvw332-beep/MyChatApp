@@ -1,0 +1,5 @@
+{"task": "How many days of paid annual leave do full-time employees get?", "expect_tools": ["search_documents"], "forbid_tools": ["query_database"], "answer_contains": ["24"], "max_steps": 2}
+{"task": "Which documents are in the knowledge base?", "expect_tools": ["list_documents"], "forbid_tools": ["query_database"], "answer_contains": [], "max_steps": 1}
+{"task": "Summarize the test document in three bullet points.", "expect_tools": ["list_documents", "read_document"], "forbid_tools": ["query_database"], "answer_contains": [], "max_steps": 4}
+{"task": "Who founded Zorvia Technologies?", "expect_tools": ["search_documents"], "forbid_tools": [], "answer_contains": ["Castellanos"], "max_steps": 2}
+{"task": "Hello! What can you do?", "expect_tools": [], "forbid_tools": ["query_database", "read_document"], "answer_contains": [], "max_steps": 0}
