@@ -16,13 +16,15 @@ import io
 import os
 import re
 
+import docx
+from docx.table import Table
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from pypdf import PdfReader
 
 from app.core.errors import InvalidInput
 
-SUPPORTED = {".pdf", ".txt", ".md"}
+SUPPORTED = {".pdf", ".docx", ".txt", ".md"}
 MIN_CHUNK = 250  # chars; smaller trailing pieces are merged into the previous chunk
 
 splitter = RecursiveCharacterTextSplitter(
@@ -36,7 +38,39 @@ def _extract(filename: str, data: bytes) -> list[tuple[int | None, str]]:
     if ext == ".pdf":
         reader = PdfReader(io.BytesIO(data))
         return [(i + 1, page.extract_text() or "") for i, page in enumerate(reader.pages)]
+    if ext == ".docx":
+        return [(None, _docx_text(data))]
     return [(None, data.decode("utf-8", errors="replace"))]
+
+
+def _docx_text(data: bytes) -> str:
+    """Word -> Markdown-ish text: 'Heading N' styles become '#' headings (so _sections splits on
+    them), tables become 'cell | cell' rows. DOCX has no fixed pages, so there are no page numbers."""
+    try:
+        document = docx.Document(io.BytesIO(data))
+    except Exception as e:  # not a zip / not a Word file
+        raise UnreadableDocument(f"Not a valid .docx file: {e}") from e
+    lines: list[str] = []
+    for block in document.iter_inner_content():  # paragraphs and tables in document order
+        if isinstance(block, Table):
+            for row in block.rows:
+                cells = [c.text.strip() for c in row.cells]
+                if any(cells):
+                    lines.append(" | ".join(cells))
+            lines.append("")
+            continue
+        text = block.text.strip()
+        if not text:
+            continue
+        style = block.style.name if block.style is not None else ""
+        level = style.removeprefix("Heading ")
+        if style == "Title":
+            lines.append(f"# {text}")
+        elif level.isdigit():
+            lines.append(f"{'#' * min(int(level), 6)} {text}")
+        else:
+            lines.append(text)
+    return "\n".join(lines)
 
 
 _MD_HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")

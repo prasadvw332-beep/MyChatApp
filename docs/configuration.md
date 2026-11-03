@@ -101,6 +101,23 @@ the first rejection in a window is audited (`rate_limit.exceeded`), every one is
 | `INGEST_MAX_ATTEMPTS` | `3` | then a document is marked failed |
 | `INGEST_LEASE_SECONDS` | `600` | a document "processing" longer than this is assumed abandoned and retried |
 | `EMBED_BATCH_SIZE` | `64` | chunks per embedding request |
+| `S3_SOURCE_ENDPOINT` | `MINIO_ENDPOINT` | bucket to import from with `cli s3://bucket/prefix`; AWS: `s3.amazonaws.com` |
+| `S3_SOURCE_ACCESS_KEY` | `MINIO_ACCESS_KEY` | **Secret**; use a read-only key |
+| `S3_SOURCE_SECRET_KEY` | `MINIO_SECRET_KEY` | **Secret** |
+| `S3_SOURCE_SECURE` | `false` | `true` for https (AWS) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | empty | JSON key of the service account for `gdrive://`; **secret file** |
+| `SHAREPOINT_TENANT_ID` / `SHAREPOINT_CLIENT_ID` | empty | Entra app registration for `sharepoint://` |
+| `SHAREPOINT_CLIENT_SECRET` | empty | **Secret** |
+| `CONFLUENCE_EMAIL` | empty | account for `confluence://` |
+| `CONFLUENCE_API_TOKEN` | empty | **Secret** |
+| `AZURE_STORAGE_SAS_TOKEN` | empty | **Secret**; SAS with Read + List only, for `azblob://` |
+| `NOTION_TOKEN` | empty | **Secret**; internal integration secret, for `notion://` |
+| `JIRA_EMAIL` | empty | account for `jira://` |
+| `JIRA_API_TOKEN` | empty | **Secret** |
+| `SLACK_BOT_TOKEN` | empty | **Secret**; bot token (`xoxb-...`) for `slack://` |
+| `SLACK_HISTORY_DAYS` | `90` | how far back a Slack import goes |
+| `SQL_SOURCE_URL` | empty | **Secret** (contains the password); SQLAlchemy URL for `sql://`, read-only user |
+| `WEB_MAX_PAGES` | `200` | pages per website crawl |
 
 ## Observability
 

@@ -8,6 +8,15 @@ The commit and pull request of each change explain the *why* in detail (`git log
 Work on feature branches, waiting for review and merge into `main` (in this order):
 
 ### Added
+- **Ingestion sources**: Word `.docx` files (upload, batch import and CLI; headings become sections, tables
+  keep their rows), and bulk import from other sources through a new connectors package
+  (`app/ingestion/connectors/`): local folder, S3 / MinIO (`s3://`), Google Drive (`gdrive://`), SharePoint
+  (`sharepoint://`), Confluence (`confluence://`), Azure Blob (`azblob://`), Notion (`notion://`), Jira
+  (`jira://`), Slack (`slack://`), database tables (`sql://`) and websites (crawled `https://`). Shared
+  HTML-to-Markdown conversion and rate-limit-aware GET. Only folder and S3 have been run; the others aren't yet
+  tried against real accounts. New settings per source (`S3_SOURCE_*`, `GOOGLE_*`, `SHAREPOINT_*`,
+  `CONFLUENCE_*`, `AZURE_*`, `NOTION_*`, `JIRA_*`, `SLACK_*`, `SQL_SOURCE_URL`, `WEB_MAX_PAGES`).
+  `feature/ingestion-sources`
 - **Central logs**: every container's output in Loki (7 days), shipped by Grafana Alloy (Docker socket in
   compose; Kubernetes API with a namespaced read-logs Role in a cluster). Backend and worker lines are parsed:
   `level` label, `request_id` / `trace_id` / `user_id` as structured metadata. Grafana links log lines to their

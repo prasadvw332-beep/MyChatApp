@@ -1,13 +1,15 @@
-"""Bulk import: queue every PDF/TXT/MD file under a folder, in batches, for the workers.
+"""Bulk import: queue every PDF/DOCX/TXT/MD file of a source, in batches, for the workers.
 
     uv run python -m app.ingestion.cli ./my-documents                 # batches of INGEST_BATCH_SIZE (100)
+    uv run python -m app.ingestion.cli s3://company-docs/hr           # an S3 / MinIO bucket
+    uv run python -m app.ingestion.cli gdrive://<folder id>           # other sources: see connectors/__init__.py
     uv run python -m app.ingestion.cli ./my-documents --batch-size 50
     uv run python -m app.ingestion.cli --status                       # progress of the batches
     uv run python -m app.ingestion.cli --failures 3                   # why documents in batch 3 failed
     uv run python -m app.ingestion.cli --retry-failed                 # queue failed documents again
 
 This only stores files and creates jobs, which is fast; the workers (python -m app.ingestion.worker) do the
-slow part. Files are stored under their path relative to the folder ("hr/policy.pdf"), so files
+slow part. Files are stored under their path relative to the source ("hr/policy.pdf"), so files
 with the same name in different subfolders stay separate, and importing a changed file again
 replaces the old version once the new one is indexed.
 """
@@ -16,38 +18,39 @@ import argparse
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from itertools import batched
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from app.core.config import INGEST_BATCH_SIZE, MAX_UPLOAD_MB
-from app.ingestion import queue
+from app.ingestion import connectors, queue
+from app.ingestion.connectors import SourceFile
 from app.rag.chunking import SUPPORTED
 
 
-def find_files(folder: Path) -> list[Path]:
+def find_files(source: str) -> list[SourceFile]:
     files, too_big = [], 0
-    for p in sorted(folder.rglob("*")):
-        if not p.is_file() or p.suffix.lower() not in SUPPORTED:
+    for f in connectors.list_files(source):
+        if PurePosixPath(f.name).suffix.lower() not in SUPPORTED:
             continue
-        if p.stat().st_size > MAX_UPLOAD_MB * 1024 * 1024:
+        if f.size > MAX_UPLOAD_MB * 1024 * 1024:
             too_big += 1
             continue
-        files.append(p)
+        files.append(f)
     if too_big:
         print(f"skipping {too_big} file(s) larger than {MAX_UPLOAD_MB} MB")
     return files
 
 
-def enqueue(folder: Path, batch_size: int, threads: int) -> None:
-    files = find_files(folder)
-    print(f"{len(files)} file(s) in {folder}, batches of {batch_size}")
+def enqueue(source: str, batch_size: int, threads: int) -> None:
+    files = find_files(source)
+    print(f"{len(files)} file(s) in {source}, batches of {batch_size}")
     queued = skipped = 0
-    # uploading to MinIO is network-bound, so several threads speed it up a lot
+    # downloading from the source and uploading to MinIO are network-bound, so several threads speed it up a lot
     with ThreadPoolExecutor(threads) as pool:
         for group in batched(files, batch_size, strict=False):  # the last batch may be smaller
-            batch_id = queue.create_batch(str(folder))
+            batch_id = queue.create_batch(source)
             try:
                 results = list(pool.map(
-                    lambda p, batch_id=batch_id: queue.add(batch_id, p.relative_to(folder).as_posix(), p.read_bytes()),
+                    lambda f, batch_id=batch_id: queue.add(batch_id, f.name, f.read()),
                     group,
                 ))
             finally:
@@ -73,7 +76,7 @@ def show_status() -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("folder", nargs="?", type=Path, help="folder to import (searched recursively)")
+    ap.add_argument("source", nargs="?", help="folder to import (searched recursively) or a source URL: s3://, sql://, https://, ... (see connectors/__init__.py)")
     ap.add_argument("--batch-size", type=int, default=INGEST_BATCH_SIZE)
     ap.add_argument("--threads", type=int, default=8, help="parallel uploads to MinIO")
     ap.add_argument("--status", action="store_true", help="show batch progress")
@@ -88,10 +91,13 @@ def main() -> None:
             print(f"{f['filename']}  (attempts {f['attempts']})\n    {f['error']}")
     elif args.retry_failed:
         print(f"queued {queue.retry_failed()} failed document(s) again")
-    elif args.folder:
-        if not args.folder.is_dir():
-            sys.exit(f"not a folder: {args.folder}")
-        enqueue(args.folder.resolve(), args.batch_size, args.threads)
+    elif args.source:
+        # a folder is recorded as its absolute path in the batch's source column, as before
+        source = args.source if "://" in args.source else str(Path(args.source).resolve())
+        try:
+            enqueue(source, args.batch_size, args.threads)
+        except ValueError as e:  # bad folder, bad s3:// url, missing bucket
+            sys.exit(str(e))
     else:
         ap.print_help()
 

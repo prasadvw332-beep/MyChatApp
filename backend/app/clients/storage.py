@@ -29,6 +29,7 @@ client = Minio(
 # text/plain for .md too, so browsers show it instead of downloading it
 CONTENT_TYPES = {
     ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".txt": "text/plain; charset=utf-8",
     ".md": "text/plain; charset=utf-8",
 }

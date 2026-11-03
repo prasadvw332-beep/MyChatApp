@@ -186,6 +186,7 @@ button { font: inherit; color: inherit; }
   font: 700 9px "Inter", sans-serif; letter-spacing: .03em; color: #fff;
 }
 .doc-icon.pdf { background: #e5484d; }
+.doc-icon.docx { background: #2b579a; }
 .doc-icon.txt { background: #6e6e73; }
 .doc-icon.md { background: #3e63dd; }
 .doc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.35; }

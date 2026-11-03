@@ -105,6 +105,35 @@ INGEST_MAX_ATTEMPTS = int(os.getenv("INGEST_MAX_ATTEMPTS", "3"))  # then the doc
 # a document 'processing' for longer than this is assumed to belong to a dead worker and is retried
 INGEST_LEASE_SECONDS = int(os.getenv("INGEST_LEASE_SECONDS", "600"))
 EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "64"))  # chunks per embedding request
+# S3 source for bulk import (cli.py s3://bucket/prefix); unset = the local MinIO, handy for trying it out.
+# Use a read-only key: the importer only lists and downloads.
+S3_SOURCE_ENDPOINT = os.getenv("S3_SOURCE_ENDPOINT", MINIO_ENDPOINT)  # AWS: s3.amazonaws.com
+S3_SOURCE_ACCESS_KEY = os.getenv("S3_SOURCE_ACCESS_KEY", MINIO_ACCESS_KEY)
+S3_SOURCE_SECRET_KEY = os.getenv("S3_SOURCE_SECRET_KEY", MINIO_SECRET_KEY)
+S3_SOURCE_SECURE = os.getenv("S3_SOURCE_SECURE", "false").lower() == "true"  # true for AWS (https)
+# Google Drive source (gdrive://<folder id>): path to a service account's JSON key; share the folder with its email
+GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "")
+# SharePoint source (sharepoint://...): an Entra app registration with the Graph permission Sites.Read.All
+SHAREPOINT_TENANT_ID = os.getenv("SHAREPOINT_TENANT_ID", "")
+SHAREPOINT_CLIENT_ID = os.getenv("SHAREPOINT_CLIENT_ID", "")
+SHAREPOINT_CLIENT_SECRET = os.getenv("SHAREPOINT_CLIENT_SECRET", "")
+# Confluence Cloud source (confluence://<site>/<space key>): an account's email and API token
+CONFLUENCE_EMAIL = os.getenv("CONFLUENCE_EMAIL", "")
+CONFLUENCE_API_TOKEN = os.getenv("CONFLUENCE_API_TOKEN", "")
+# Azure Blob source (azblob://<account>/<container>): a SAS token with Read + List permission only
+AZURE_STORAGE_SAS_TOKEN = os.getenv("AZURE_STORAGE_SAS_TOKEN", "")
+# Notion source (notion://<page id>): an internal integration's secret; share the page with the integration
+NOTION_TOKEN = os.getenv("NOTION_TOKEN", "")
+# Jira Cloud source (jira://<site>/<project key>): an account's email and API token
+JIRA_EMAIL = os.getenv("JIRA_EMAIL", "")
+JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN", "")
+# Slack source (slack://<channel id>): a bot token (xoxb-...), and how many days of history to import
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+SLACK_HISTORY_DAYS = int(os.getenv("SLACK_HISTORY_DAYS", "90"))
+# Database source (sql://<table>): a SQLAlchemy URL, ideally of a read-only user
+SQL_SOURCE_URL = os.getenv("SQL_SOURCE_URL", "")
+# Website source (https://...): stop crawling after this many pages
+WEB_MAX_PAGES = int(os.getenv("WEB_MAX_PAGES", "200"))
 
 
 _DEV_MINIO_SECRET = "minioadmin123"
