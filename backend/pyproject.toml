@@ -29,6 +29,7 @@ dependencies = [
     "qdrant-client>=1.20.0",
     "sqlalchemy>=2.0",
     "uvicorn>=0.54.0",
+    "watchdog>=6.0.0",
 ]
 
 [tool.uv]

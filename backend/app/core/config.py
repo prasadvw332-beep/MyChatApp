@@ -211,6 +211,9 @@ KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "bucket-events")
 KAFKA_GROUP = os.getenv("KAFKA_GROUP", "ingest")  # consumers in one group share the topic's partitions
 KAFKA_DLQ_TOPIC = os.getenv("KAFKA_DLQ_TOPIC", "bucket-events.dlq")  # events that kept failing
 KAFKA_MAX_ATTEMPTS = int(os.getenv("KAFKA_MAX_ATTEMPTS", "5"))
+# ... or from a local/network folder (python -m app.ingestion.folder_watcher <folder>): file system events.
+# A file is queued once it has been quiet this long: one save or copy fires several events.
+WATCH_DEBOUNCE_SECONDS = float(os.getenv("WATCH_DEBOUNCE_SECONDS", "2"))
 
 # ---------- Advanced (docs/advanced.md). All off by default. ----------
 

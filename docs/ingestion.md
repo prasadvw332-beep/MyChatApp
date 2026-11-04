@@ -97,6 +97,29 @@ itself. In Kubernetes the same DAG would use `KubernetesPodOperator` (a pod per 
 `DockerOperator`; a plain `CronJob` running `cli <source> --wait` is the lighter alternative when one schedule
 is all you need.
 
+## Watching a folder
+
+The nightly import is hours behind. For a local or network folder, a watcher queues each change within seconds
+(`app/ingestion/folder_watcher.py`; the bucket equivalent is the webhook or the Kafka consumer):
+
+```
+file saved/copied/renamed/deleted ─► watchdog event ─► quiet for WATCH_DEBOUNCE_SECONDS ─► queue.add() ─► worker pool
+                                                                                       └─► delete_document()
+```
+
+```bash
+uv run python -m app.ingestion.folder_watcher ./my-documents
+```
+
+- It only notices and queues; the workers index, as for every other source.
+- Events are hints: the file is read as it is when its quiet period ends, and unchanged content is skipped by
+  hash, so repeated events are harmless. At startup the folder is queued once, to catch up on changes made
+  while it was stopped.
+- Keep the nightly `cli <folder> --wait --sync` as well. The OS can drop events, and deletions made while the
+  watcher was down are only found by a full comparison. Real-time path plus scheduled reconcile is the usual
+  pairing: the first for speed, the second for correctness.
+- Run one watcher per folder. Ingestion scales with the workers behind the queue, not with watchers.
+
 ## Extraction
 
 The text of each file comes from an extractor (`backend/app/rag/extractors/`), chosen with `EXTRACTOR`:

@@ -344,6 +344,8 @@ uvicorn==0.54.0
     # via
     #   backend
     #   mcp
+watchdog==7.0.0
+    # via backend
 websockets==16.1.1 ; sys_platform != 'win32'
     # via
     #   langgraph-sdk
