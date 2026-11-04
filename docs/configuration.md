@@ -104,6 +104,8 @@ the first rejection in a window is audited (`rate_limit.exceeded`), every one is
 | `EXTRACTOR` | `basic` | `basic`, `docling`, `unstructured` or `azure` (see [ingestion](ingestion.md#extraction)) |
 | `AZURE_DI_ENDPOINT` | empty | Document Intelligence endpoint, for `EXTRACTOR=azure` |
 | `AZURE_DI_KEY` | empty | **Secret** |
+| `EXTRACT_CACHE` | `true` | keep each PDF page's extracted text (`extraction_cache`), so an edited document only re-extracts changed pages. Only used for `docling`, `unstructured`, `azure`, or `basic` with `VISION_MODEL` ([caching](caching.md#ingestion-caches-page-text-and-graph-triples)) |
+| `EXTRACT_TEXT_LAYER_MIN_CHARS` | `0` | non-`basic` extractors: read a PDF page with pypdf when its text layer has this many characters, so only scanned pages are OCR'd; those pages lose tables and headings. `0` = off |
 | `S3_SOURCE_ENDPOINT` | `MINIO_ENDPOINT` | bucket to import from with `cli s3://bucket/prefix`; AWS: `s3.amazonaws.com` |
 | `S3_SOURCE_ACCESS_KEY` | `MINIO_ACCESS_KEY` | **Secret**; use a read-only key |
 | `S3_SOURCE_SECRET_KEY` | `MINIO_SECRET_KEY` | **Secret** |
@@ -144,6 +146,7 @@ All off by default; see [production-rag.md](production-rag.md) for what each doe
 | `QUERY_REWRITE` | `off` | `condense`, `multi` or `hyde` |
 | `QUERY_VARIANTS` | `3` | rephrasings for `multi` |
 | `GRAPH_RAG` | `false` | extract entities and relations at index time, add graph facts to answers |
+| `GRAPH_CACHE` | `true` | keep each chunk's extracted triples (`graph_cache`): re-indexing only asks the model about changed chunks |
 | `ACL_ENABLED` | `false` | document permissions (re-index first: older chunks have no acl) |
 | `AGENT_CHECKPOINTER` | `memory` | `postgres` lets any replica resume a paused agent run |
 | `AGENT_APPROVAL_TOOLS` | empty | comma-separated tool names that need the user's OK |

@@ -110,6 +110,13 @@ EMBED_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "64"))  # chunks per embedd
 EXTRACTOR = os.getenv("EXTRACTOR", "basic").lower()
 AZURE_DI_ENDPOINT = os.getenv("AZURE_DI_ENDPOINT", "")  # https://<name>.cognitiveservices.azure.com
 AZURE_DI_KEY = os.getenv("AZURE_DI_KEY", "")
+# Each PDF page's extracted text is kept in PostgreSQL (extraction_cache), so an edited document only re-extracts
+# the pages that changed (app/cache/extraction.py). Only used where extraction is slow or paid: an EXTRACTOR other
+# than basic, or basic with VISION_MODEL.
+EXTRACT_CACHE = os.getenv("EXTRACT_CACHE", "true").lower() == "true"
+# docling/unstructured/azure: a PDF page whose text layer has at least this many characters is read with pypdf
+# instead, so only scanned pages are OCR'd. Those pages lose the extractor's tables and headings. 0 = off.
+EXTRACT_TEXT_LAYER_MIN_CHARS = int(os.getenv("EXTRACT_TEXT_LAYER_MIN_CHARS", "0"))
 # S3 source for bulk import (cli.py s3://bucket/prefix); unset = the local MinIO, handy for trying it out.
 # Use a read-only key: the importer only lists and downloads.
 S3_SOURCE_ENDPOINT = os.getenv("S3_SOURCE_ENDPOINT", MINIO_ENDPOINT)  # AWS: s3.amazonaws.com
@@ -160,6 +167,9 @@ QUERY_REWRITE = os.getenv("QUERY_REWRITE", "off").lower()
 QUERY_VARIANTS = int(os.getenv("QUERY_VARIANTS", "3"))  # multi
 # Knowledge graph next to the vectors: entities and relations extracted by the LLM at index time
 GRAPH_RAG = _flag("GRAPH_RAG")
+# keep each chunk's extracted triples (graph_cache): re-indexing an edited document only asks the model about
+# chunks whose text changed
+GRAPH_CACHE = os.getenv("GRAPH_CACHE", "true").lower() == "true"
 
 # Document permissions: each document lists who may see it ("public", "user:<id>", "group:<name>")
 ACL_ENABLED = _flag("ACL_ENABLED")

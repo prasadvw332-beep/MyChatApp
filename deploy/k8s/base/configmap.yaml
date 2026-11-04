@@ -23,6 +23,7 @@ data:
   MIN_SCORE: "0.58"
   # caching (docs/caching.md); the answer cache is emptied by every document upload or delete
   EMBED_CACHE: "true"
+  EXTRACT_CACHE: "true"  # PDF pages; only used with a slow EXTRACTOR or VISION_MODEL
   SEMANTIC_CACHE: "true"
   SEMANTIC_CACHE_THRESHOLD: "0.95"
   SEMANTIC_CACHE_TTL_SECONDS: "86400"

@@ -1,6 +1,7 @@
 # Caching
 
-Two caches cut the work the models do. Both are on by default, and both are best-effort: if one fails,
+Two caches cut the work the models do at question time, and two more at [ingestion](#ingestion-caches-page-text-and-graph-triples).
+All are on by default, and all are best-effort: if one fails,
 the request goes ahead without it and `cache_errors_total` counts the failure.
 
 | | Embedding cache | Semantic answer cache |
@@ -85,9 +86,45 @@ Different questions score as high as 0.87 because they share most of their words
 them and still catches rewordings. A miss only costs a normal answer, while a false hit gives the wrong one,
 so err on the high side. Before lowering it, run your users' real questions through the same comparison.
 
+## Ingestion caches: page text and graph triples
+
+Updating a document re-processes the whole file. The embedding cache already makes the embedding step
+cheap: only chunks whose text changed reach the model. These two caches do the same for the other slow steps.
+
+| | Extraction cache | Graph cache |
+|---|---|---|
+| Saves | OCR/layout extraction of a PDF page (docling, unstructured, azure), or its image descriptions (`VISION_MODEL`) | one LLM call per chunk (`GRAPH_RAG`) |
+| Key | sha256 of extractor + version + the **page's content** | sha256 of model + prompt + chunk text |
+| Where | PostgreSQL `extraction_cache` | PostgreSQL `graph_cache` |
+| Used when | `EXTRACT_CACHE=true` and extraction is slow (not plain `basic`) | `GRAPH_CACHE=true` and `GRAPH_RAG=true` |
+| Code | [cache/extraction.py](../backend/app/cache/extraction.py) | [rag/graph.py](../backend/app/rag/graph.py) |
+
+**Only changed pages are extracted.** The PDF is split with pypdf (no OCR), each page is looked up, and the
+pages that miss are copied into a smaller PDF and handed to the extractor. 100 documents with 2 edited pages
+each cost 200 pages of OCR, not every page of all 100.
+
+**The key is the page's content, not the file's bytes.** It hashes the page's objects: decoded content
+streams, fonts (inherited ones too), images and annotations. Saving a file again renumbers and re-compresses
+its objects; an unchanged page still gets the same key. A changed font gives a new key, because the text
+read from the page can change with it.
+
+**Extractor upgrades.** The key includes the extractor, its package version (Azure: its API version), the
+vision model for `basic`, and `CACHE_VERSION` in [extractors/\_\_init\_\_.py](../backend/app/rag/extractors/__init__.py).
+Bump that constant when changing an extractor's own code (heading rules, table format), so old text isn't reused.
+
+**Optional: OCR only scanned pages.** `EXTRACT_TEXT_LAYER_MIN_CHARS=200` reads a page with pypdf when its text
+layer already has 200+ characters, and sends only the rest to the OCR extractor. It also saves on the first
+ingestion. The trade-off: those pages lose the extractor's tables and headings. Off by default.
+
+**Personal data.** These caches hold text, keyed by content rather than by document, so deleting a document
+leaves its entries (another document may share the page). Replacing a document with a new version keeps them
+on purpose: that's what makes the next edit cheap. Account erasure (`DELETE /me`,
+[services/privacy.py](../backend/app/services/privacy.py)) removes the deleted files' pages and triples.
+
 ## Turning them off
 
-`EMBED_CACHE=false` and `SEMANTIC_CACHE=false` ([configuration.md](configuration.md#caching)). Delete the
+`EMBED_CACHE=false` and `SEMANTIC_CACHE=false` ([configuration.md](configuration.md#caching)), likewise
+`EXTRACT_CACHE=false` and `GRAPH_CACHE=false`. Delete the
 answers collection after turning the semantic cache back on if documents changed in between, since nothing
 emptied it while it was off.
 
@@ -95,7 +132,9 @@ emptied it while it was off.
 
 The Grafana row **Caching** shows the share of first questions answered from the cache, embeddings by
 source (memory, PostgreSQL, model) and cache errors. Metrics: `semantic_cache_lookups_total{result}`,
-`embedding_cache_lookups_total{result}`, `cache_errors_total{cache}`.
+`embedding_cache_lookups_total{result}`, `cache_errors_total{cache}`. Ingestion:
+`extraction_cache_lookups_total{result="database|text_layer|miss"}` (pages) and
+`graph_cache_lookups_total{result="hit|miss"}` (chunks); not on the dashboard yet.
 
 ## Not cached
 

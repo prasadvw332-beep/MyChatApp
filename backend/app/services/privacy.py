@@ -9,6 +9,8 @@ In a RAG app "their data" is spread wider than the users table:
     documents    files only they could see ("user:<id>" alone)                  -> deleted: file, chunks, row
                  shared files that list them                                     -> their entry removed
     caches       semantic answer cache                                           -> cleared
+                 page text and graph triples of the deleted files (they're       -> removed
+                 keyed by content, so deleting the document leaves them)
     elsewhere    logs (Loki keeps 7 days, then they expire), traces (Tempo, Langfuse: delete by user id
                  through their APIs), backups (expire on their schedule; never restore deleted users)
 
@@ -19,6 +21,7 @@ honoured is itself something you must be able to show.
 from sqlalchemy import select
 
 from app.cache import semantic
+from app.clients import storage
 from app.core.db import SessionLocal
 from app.models import Chat, Document, Feedback, User, UserMemory
 from app.rag import knowledge_base
@@ -49,12 +52,14 @@ def erase(user: User) -> dict:
     deleted_docs = unshared = 0
     with SessionLocal() as db:
         docs = db.scalars(select(Document).where(Document.acl.contains([me]))).all()
-        plan = [(d.doc_id, [p for p in (d.acl or []) if p != me]) for d in docs]
-    for doc_id, others in plan:
+        plan = [(d.doc_id, d.filename, d.minio_key, [p for p in (d.acl or []) if p != me]) for d in docs]
+    for doc_id, filename, minio_key, others in plan:
         if others:  # shared with a group or another user: they keep it, without us
             knowledge_base.set_acl(doc_id, others)
             unshared += 1
         else:
+            if minio_key:  # before the file goes: the cache keys are computed from it
+                knowledge_base.forget_cached(filename, storage.read(minio_key)[0])
             knowledge_base.delete_document(doc_id)
             deleted_docs += 1
     with SessionLocal.begin() as db:

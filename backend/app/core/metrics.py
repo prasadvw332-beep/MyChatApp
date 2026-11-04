@@ -52,6 +52,11 @@ embedding_cache = Counter("embedding_cache_lookups_total", "Texts to embed, by w
                           ["result"])
 semantic_cache = Counter("semantic_cache_lookups_total", "Single-turn chat questions, answered from the cache or not",
                          ["result"])
+# Ingestion caches. Pages: result = database | text_layer (read with pypdf, EXTRACT_TEXT_LAYER_MIN_CHARS) | miss.
+# Graph: result = hit | miss (the model was asked).
+extraction_cache = Counter("extraction_cache_lookups_total", "PDF pages to extract, by where the text came from",
+                           ["result"])
+graph_cache = Counter("graph_cache_lookups_total", "Chunks to extract graph triples from, cached or not", ["result"])
 cache_errors = Counter("cache_errors_total", "Cache reads/writes that failed; the request went ahead without it",
                        ["cache"])
 

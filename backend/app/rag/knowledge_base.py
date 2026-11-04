@@ -22,8 +22,8 @@ from app.core.config import MIN_SCORE, RERANK_CANDIDATES
 from app.core.errors import ConflictError
 from app.core.telemetry import span
 from app.guardrails import injection, pii
-from app.rag import fusion, graph, rerank
-from app.rag.chunking import chunk
+from app.rag import extractors, fusion, graph, rerank
+from app.rag.chunking import UnreadableDocumentError, chunk
 from app.repositories import doc_store
 
 TOP_K = 5
@@ -138,6 +138,19 @@ def _remove_crashed_uploads() -> None:
     # left 'indexing' by a crash; would otherwise block re-uploading that file
     for doc_id in doc_store.stale_indexing():
         delete_document(doc_id)
+
+
+def forget_cached(filename: str, data: bytes) -> None:
+    """Remove the text the ingestion caches keep of a file: its PDF pages and its chunks' graph triples
+    (personal data erasure). They are keyed by content, not document, so deleting the document leaves them.
+    The embedding cache holds only vectors under a hash, no text. Raises if a cache can't be emptied."""
+    if graph.is_enabled() and graph.cache:
+        try:
+            docs, _ = _chunks("", filename, data, [PUBLIC])  # the chunk text the triples were keyed by
+        except UnreadableDocumentError:
+            docs = []  # no text, so no chunks and no triples
+        graph.forget(docs)
+    extractors.forget(filename, data)
 
 
 def delete_document(doc_id: str) -> None:

@@ -10,13 +10,15 @@ question. A graph connects them.
     query time   entities named in the question -> their relations, 2 hops out
                  -> added to the prompt as "facts", next to the retrieved chunks
 
-Cost: one model call per chunk while indexing (the workers do it, not the chat request). Small
+Cost: one model call per chunk while indexing (the workers do it, not the chat request); with
+GRAPH_CACHE, re-indexing an edited document only asks about the chunks whose text changed. Small
 models extract noisy triples; production setups use a stronger model for this step, or
 Microsoft's GraphRAG, which also summarises communities of entities. A graph database (Neo4j)
 replaces the two tables when the graph grows large or needs deeper traversals.
 Relations are deleted with their document (foreign key, ON DELETE CASCADE).
 """
 
+import hashlib
 import json
 import logging
 
@@ -26,11 +28,17 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.clients.llm import utility_llm
-from app.core.config import GRAPH_RAG
+from app.core import metrics
+from app.core.config import GRAPH_CACHE, GRAPH_RAG
 from app.core.db import SessionLocal
 from app.models import GraphEntity, GraphRelation
+from app.repositories import extraction_cache_store
 
 log = logging.getLogger(__name__)
+
+# each chunk's triples, keyed by what the model saw; None = always ask the model
+cache = extraction_cache_store.triples if GRAPH_CACHE else None
+MAX_CHARS = 4000  # of a chunk sent to the model
 
 EXTRACT = (
     "Extract the important entities (people, teams, organisations, products, projects, places, "
@@ -58,8 +66,49 @@ def _parse(text: str) -> dict:
 
 
 def extract(text: str) -> dict:
-    out = utility_llm.invoke([SystemMessage(EXTRACT), HumanMessage(text[:4000])])
+    out = utility_llm.invoke([SystemMessage(EXTRACT), HumanMessage(text[:MAX_CHARS])])
     return _parse(out.content or "")
+
+
+def _cache_key(text: str) -> str:
+    """Model, prompt and text: another model or an edited prompt reads the chunk again."""
+    return hashlib.sha256(f"{utility_llm.model}\0{EXTRACT}\0{text[:MAX_CHARS]}".encode()).hexdigest()
+
+
+def _load_cached(docs: list[Document]) -> dict[str, dict]:
+    """The cached triples of these chunks, in one query. Never raises: a cache failure only costs model calls."""
+    if not cache:
+        return {}
+    try:
+        return cache.get_many(list({_cache_key(d.page_content) for d in docs}))
+    except Exception as e:
+        metrics.cache_errors.labels("graph").inc()
+        log.warning("graph cache read failed, asking the model for every chunk: %s", e)
+        return {}
+
+
+def _extract_cached(text: str, cached: dict[str, dict]) -> dict:
+    key = _cache_key(text)
+    if key in cached:
+        metrics.graph_cache.labels("hit").inc()
+        return cached[key]
+    metrics.graph_cache.labels("miss").inc()
+    data = extract(text)
+    # {} is a reply that wasn't JSON: worth asking again next time, not remembering
+    if cache and data:
+        try:
+            cache.put_many(utility_llm.model, {key: data})
+        except Exception as e:
+            metrics.cache_errors.labels("graph").inc()
+            log.warning("graph cache write failed: %s", e)
+    cached[key] = data  # the same text twice in one document is asked once
+    return data
+
+
+def forget(docs: list[Document]) -> None:
+    """Remove these chunks' cached triples (personal data erasure). Raises if that fails."""
+    if cache:
+        cache.delete_many([_cache_key(d.page_content) for d in docs])
 
 
 def _entity_id(db, name: str, type_: str) -> int:
@@ -73,9 +122,10 @@ def index(doc_id: str, docs: list[Document]) -> int:
     """Extract and store the triples of one document's chunks. Returns how many relations were stored.
     Never raises: the vectors are what search needs, the graph is extra."""
     stored = 0
+    cached = _load_cached(docs)
     for doc in docs:
         try:
-            data = extract(doc.page_content)
+            data = _extract_cached(doc.page_content, cached)
             types = {e.get("name", "").strip().lower(): e.get("type", "other") for e in data.get("entities", [])}
             with SessionLocal.begin() as db:
                 for r in data.get("relations", [])[:10]:

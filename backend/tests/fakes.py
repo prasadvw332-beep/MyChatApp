@@ -128,6 +128,13 @@ class FakeVectorRows:
             raise ConnectionError("postgres down")
         self.rows |= vectors
 
+    def delete_many(self, keys):
+        """Also plays extraction_cache_store.pages / .triples: the same get/put shape, other values."""
+        if self.down:
+            raise ConnectionError("postgres down")
+        for k in keys:
+            self.rows.pop(k, None)
+
 
 class FakeRateLimits:
     """Plays repositories/rate_limit_store.py: hits per (key, window_start)."""
