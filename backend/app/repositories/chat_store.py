@@ -13,11 +13,11 @@ from app.core.db import SessionLocal
 from app.models import Chat, Message
 
 
-class NotOwner(Exception):
+class NotChatOwnerError(Exception):
     """The chat id exists but belongs to another user."""
 
 
-def list_for(user_id: int) -> list[Chat]:
+def list_for_user(user_id: int) -> list[Chat]:
     """The user's chats with their messages, newest first."""
     with SessionLocal() as db:
         return list(db.scalars(
@@ -35,7 +35,7 @@ def save(user_id: int, chat_id: str, title: str, title_by: str | None, titled_at
             chat = Chat(id=chat_id, user_id=user_id)
             db.add(chat)
         elif chat.user_id != user_id:
-            raise NotOwner()
+            raise NotChatOwnerError()
         chat.title, chat.title_by, chat.titled_at, chat.updated_at = title, title_by, titled_at, updated_at
         chat.messages.clear()
         db.flush()  # delete the old rows first, or the new ones clash on (chat_id, position)

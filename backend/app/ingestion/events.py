@@ -40,7 +40,7 @@ def parse(body: dict) -> tuple[list[tuple[str, str, int]], list[tuple[str, str]]
     return created, removed
 
 
-def apply(created: list[tuple[str, str, int]], removed: list[tuple[str, str]]) -> dict:
+def apply_changes(created: list[tuple[str, str, int]], removed: list[tuple[str, str]]) -> dict:
     """Queue the created files, delete the removed ones. Returns counts."""
     client = s3._client()
     queued = skipped = deleted = 0
@@ -69,4 +69,4 @@ def apply(created: list[tuple[str, str, int]], removed: list[tuple[str, str]]) -
 
 
 def handle(body: dict) -> dict:
-    return apply(*parse(body))
+    return apply_changes(*parse(body))

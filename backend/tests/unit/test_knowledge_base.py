@@ -4,7 +4,7 @@ import pytest
 from langchain_core.documents import Document
 
 from app.rag import knowledge_base as kb
-from app.rag.chunking import UnreadableDocument
+from app.rag.chunking import UnreadableDocumentError
 from tests.fakes import FakeDocStore, FakeStorage, FakeVectorStore
 
 TEXT = b"# Notes\nThe cobalt giraffe sings opera in Lima on Tuesdays."
@@ -30,7 +30,7 @@ def test_ingest_writes_metadata_file_and_vectors(env):
 
 def test_same_content_is_rejected(env):
     kb.ingest("notes.md", TEXT)
-    with pytest.raises(kb.DuplicateDocument) as e:
+    with pytest.raises(kb.DuplicateDocumentError) as e:
         kb.ingest("copy.md", TEXT)
     assert e.value.status == 409
 
@@ -53,7 +53,7 @@ def test_failed_save_leaves_nothing_behind(env, monkeypatch):
 
 
 def test_unreadable_file_fails_before_any_write(env):
-    with pytest.raises(UnreadableDocument) as e:
+    with pytest.raises(UnreadableDocumentError) as e:
         kb.ingest("empty.txt", b"   ")
     assert e.value.status == 422
     assert env["doc_store"].rows == {} and env["storage"].files == {}

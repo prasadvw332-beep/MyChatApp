@@ -8,11 +8,11 @@ MAX_MESSAGE_CHARS = 50_000
 MAX_MESSAGES = 1_000
 
 
-class Message(BaseModel):
+class ChatMessage(BaseModel):
     # no "system": a client must not be able to write the instructions
     role: Literal["user", "assistant"]
     content: str = Field(max_length=MAX_MESSAGE_CHARS)
 
 
 class ChatRequest(BaseModel):
-    messages: list[Message] = Field(max_length=MAX_MESSAGES)
+    messages: list[ChatMessage] = Field(max_length=MAX_MESSAGES)

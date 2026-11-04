@@ -37,10 +37,10 @@ from app.core.config import OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_GROUPS_CLAI
 
 FLOW_COOKIE = "oidc_flow"
 # Entra: also Graph scopes, so the login's access token can read the user's groups (entra.py)
-SCOPES = "openid email profile" + (f" {entra.SCOPES}" if entra.enabled() else "")
+SCOPES = "openid email profile" + (f" {entra.SCOPES}" if entra.is_enabled() else "")
 
 
-def enabled() -> bool:
+def is_enabled() -> bool:
     return bool(OIDC_ISSUER and OIDC_CLIENT_ID)
 
 
@@ -86,7 +86,7 @@ def finish(code: str, flow: dict) -> tuple[dict, str | None]:
     id_token = tokens["id_token"]
     key = _jwks().get_signing_key_from_jwt(id_token)
     # Entra multi-tenant: the discovery issuer is a "{tenantid}" template, checked per token instead
-    templated = entra.enabled() and entra.multi_tenant()
+    templated = entra.is_enabled() and entra.is_multi_tenant()
     claims = jwt.decode(
         id_token, key.key, algorithms=["RS256", "ES256"],  # never "none", never HS*: those would trust anyone
         audience=OIDC_CLIENT_ID, issuer=None if templated else discovery()["issuer"], leeway=30,
@@ -100,7 +100,7 @@ def finish(code: str, flow: dict) -> tuple[dict, str | None]:
 
 
 def groups(claims: dict, access_token: str | None = None) -> list[str]:
-    if entra.enabled():
+    if entra.is_enabled():
         return entra.groups(claims, access_token)  # ids -> names, overage via Graph, app roles
     value = claims.get(OIDC_GROUPS_CLAIM) or []
     return [str(g) for g in value][:200] if isinstance(value, list) else []
@@ -109,7 +109,7 @@ def groups(claims: dict, access_token: str | None = None) -> list[str]:
 def logout_url() -> str | None:
     """The provider's sign-out URL (ends the session there too), if it has one."""
     endpoint = discovery().get("end_session_endpoint")
-    return entra.logout_url(endpoint) if endpoint and entra.enabled() else endpoint
+    return entra.logout_url(endpoint) if endpoint and entra.is_enabled() else endpoint
 
 
 def username(claims: dict) -> str:

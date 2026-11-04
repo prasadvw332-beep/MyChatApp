@@ -36,7 +36,7 @@ class VectorRows(Protocol):
     def put_many(self, model: str, vectors: dict[str, list[float]]) -> None: ...
 
 
-class LRU:
+class LRUCache:
     """Thread-safe: the API embeds from worker threads (asyncio.to_thread).
 
     Vectors are kept as packed doubles: 6 KB for 768 dimensions, where a list of Python floats takes ~25 KB.
@@ -66,7 +66,7 @@ class CachedEmbeddings(Embeddings):
     def __init__(self, inner: Embeddings, model: str, memory_items: int, rows: VectorRows | None = None):
         self.inner = inner
         self.model = model
-        self.memory = LRU(memory_items)
+        self.memory = LRUCache(memory_items)
         self.rows = rows
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:

@@ -39,7 +39,7 @@ def test_unhandled_error_is_a_generic_500_with_request_id(client, logged_in, mon
     def bug(_user_id):
         raise KeyError("internal detail")
 
-    monkeypatch.setattr(chat_store, "list_for", bug)
+    monkeypatch.setattr(chat_store, "list_for_user", bug)
     r = client.get("/chats", headers={"X-Request-ID": "req-500"})
     assert r.status_code == 500
     assert r.json() == {"detail": "Something went wrong. Please try again.", "code": "internal_error",
@@ -49,7 +49,7 @@ def test_unhandled_error_is_a_generic_500_with_request_id(client, logged_in, mon
 
 def test_duplicate_upload_is_409(client, logged_in, monkeypatch):
     def duplicate(name, data, acl=None):
-        raise knowledge_base.DuplicateDocument("Already there.")
+        raise knowledge_base.DuplicateDocumentError("Already there.")
 
     monkeypatch.setattr(knowledge_base, "ingest", duplicate)
     r = client.post("/upload", files={"file": ("a.txt", b"hello")})
@@ -58,7 +58,7 @@ def test_duplicate_upload_is_409(client, logged_in, monkeypatch):
 
 def test_someone_elses_chat_is_not_found(client, logged_in, monkeypatch):
     def not_owner(*args):
-        raise chat_store.NotOwner()
+        raise chat_store.NotChatOwnerError()
 
     monkeypatch.setattr(chat_store, "save", not_owner)
     r = client.put("/chats/abc", json={"title": "t", "updatedAt": 0, "messages": []})

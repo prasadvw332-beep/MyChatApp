@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from app.schemas.chat import MAX_MESSAGE_CHARS
 
 
-class FeedbackIn(BaseModel):
+class FeedbackRequest(BaseModel):
     chatId: str = Field(min_length=1, max_length=64)
     position: int = Field(ge=0)
     rating: Literal["up", "down"] | None  # None takes the rating back

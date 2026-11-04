@@ -48,7 +48,7 @@ from app.core.telemetry import span
 from app.guardrails import injection
 from app.prompts.agents import AGENT_PROMPT
 from app.rag.answer import build_messages, cite
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 from app.services import usage
 
 log = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class AgentState(TypedDict):
     declined: list[str]  # ids of the tool calls the user declined in the last approval
 
 
-async def run(history: list[Message], tools: list[BaseTool], *, thread_id: str | None = None,
+async def run(history: list[ChatMessage], tools: list[BaseTool], *, thread_id: str | None = None,
               about_user: str = "", trace: dict | None = None) -> AsyncIterator[dict]:
     """One agent answer. `about_user`: long-term memory for the system prompt (memory.py);
     `trace`: LLM tracing callbacks (core/llm_tracing.py)."""
@@ -81,7 +81,7 @@ async def resume(thread_id: str, approved: bool, tools: list[BaseTool], trace: d
 
 async def _drive(tools: list[BaseTool], tally: usage.Tally, graph_input, thread_id: str,
                  trace: dict | None) -> AsyncIterator[dict]:
-    cp = await checkpoint.saver()
+    cp = await checkpoint.get_saver()
     config = {
         # each round is three steps (agent, approve, tools), plus the final answer
         "recursion_limit": 3 * AGENT_MAX_STEPS + 4,

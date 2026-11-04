@@ -39,7 +39,7 @@ from app.core.db import SessionLocal, init_db
 from app.models import EvalRun
 from app.rag import graph, knowledge_base, query
 from app.rag.answer import build_messages
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 
 # Defaults to the chat model so no extra download is needed. A small judge gives rough scores;
 # set EVAL_MODEL to a larger model for more trustworthy numbers.
@@ -66,10 +66,10 @@ async def generate(rows: list[dict], progress: Progress) -> None:
     """Fill in response + retrieved contexts for each row, exactly as /chat would (query rewriting and
     graph facts included, so evals/compare.py measures the features that are switched on)."""
     for i, row in enumerate(rows, 1):
-        history = [Message(role="user", content=row["question"])]
+        history = [ChatMessage(role="user", content=row["question"])]
         queries = await query.search_queries(history)
         docs = await asyncio.to_thread(knowledge_base.retrieve, row["question"], queries=queries)
-        facts = await asyncio.to_thread(graph.facts, queries[0]) if graph.enabled() else []
+        facts = await asyncio.to_thread(graph.find_facts, queries[0]) if graph.is_enabled() else []
         messages = build_messages(history, docs, facts)
         row["response"] = (await llm.ainvoke(messages)).content
         row["contexts"] = [

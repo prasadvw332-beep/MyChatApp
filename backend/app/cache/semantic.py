@@ -28,7 +28,7 @@ from app.clients.answer_store import AnswerStore
 from app.clients.llm import embeddings
 from app.core import metrics
 from app.core.config import CHAT_MODEL, SEMANTIC_CACHE, SEMANTIC_CACHE_THRESHOLD, SEMANTIC_CACHE_TTL_SECONDS
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ cache: SemanticCache | None = SemanticCache(
 ) if SEMANTIC_CACHE else None
 
 
-def cacheable(messages: list[Message]) -> bool:
+def is_cacheable(messages: list[ChatMessage]) -> bool:
     """Only a chat's first question: later ones depend on the conversation before them."""
     return cache is not None and len(messages) == 1 and messages[0].role == "user"
 

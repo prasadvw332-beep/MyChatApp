@@ -12,7 +12,7 @@ Install:  uv add docling   (pulls in PyTorch). The first conversion downloads th
 from functools import cache
 from io import BytesIO
 
-from app.rag.extractors import Page, UnreadableDocument
+from app.rag.extractors import Page, UnreadableDocumentError
 
 
 @cache
@@ -34,7 +34,7 @@ def extract(filename: str, data: bytes) -> list[Page]:
         # the name tells Docling the format (.pdf, .pptx, ...); the bytes never touch the disk
         result = converter.convert(DocumentStream(name=filename, stream=BytesIO(data)))
     except ConversionError as e:  # corrupt or unsupported file: permanent, don't retry
-        raise UnreadableDocument(f"Docling couldn't read this file: {e}") from e
+        raise UnreadableDocumentError(f"Docling couldn't read this file: {e}") from e
     doc = result.document
     if doc.pages:  # PDFs, images and slides have pages
         return [(n, doc.export_to_markdown(page_no=n)) for n in sorted(doc.pages)]

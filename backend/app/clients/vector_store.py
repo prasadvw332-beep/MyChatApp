@@ -223,7 +223,7 @@ class HybridQdrantStore(QdrantStore):
         ).points if indices else []
 
         cosine = {p.id: p.score for p in dense_hits}
-        fused = fusion.rrf([dense_hits, keyword_hits], key=lambda p: p.id, limit=k)
+        fused = fusion.reciprocal_rank_fusion([dense_hits, keyword_hits], key=lambda p: p.id, limit=k)
         # a keyword-only hit has no cosine score: 0, so it never lifts the "is this relevant" gate
         return [(Document(p.payload.get("page_content", ""), metadata=p.payload.get(META, {})), cosine.get(p.id, 0.0))
                 for p in fused]

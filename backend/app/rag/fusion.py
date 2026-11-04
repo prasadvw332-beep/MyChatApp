@@ -16,7 +16,7 @@ T = TypeVar("T")
 K = 60
 
 
-def rrf(rankings: Sequence[Sequence[T]], key: Callable[[T], Hashable], limit: int) -> list[T]:
+def reciprocal_rank_fusion(rankings: Sequence[Sequence[T]], key: Callable[[T], Hashable], limit: int) -> list[T]:
     """The fused top `limit` items, best first. `key` says when two items are the same (a chunk id)."""
     scores: dict[Hashable, float] = {}
     first_seen: dict[Hashable, T] = {}

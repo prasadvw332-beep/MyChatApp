@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core import config, rate_limit
-from app.core.errors import TooManyRequests
+from app.core.errors import RateLimitExceededError
 from app.core.rate_limit import Limit
 from app.repositories import user_store
 from tests.fakes import FakeRateLimits
@@ -45,7 +45,7 @@ def test_limit_per_window_and_subject(clock):
     limit = Limit(2, 60)
     check("chat", "user:1", limit)
     check("chat", "user:1", limit)
-    with pytest.raises(TooManyRequests) as e:
+    with pytest.raises(RateLimitExceededError) as e:
         check("chat", "user:1", limit)
     assert e.value.headers == {"Retry-After": "30"}  # until the minute is over (29.5 s, rounded up)
     check("chat", "user:2", limit)  # another user has their own count
@@ -72,7 +72,7 @@ def test_over_limit_is_a_429_in_the_usual_error_shape(client, logged_in, clock, 
 
 def test_register_is_limited_per_ip(client, clock, monkeypatch):
     def taken(*_):
-        raise user_store.UsernameTaken
+        raise user_store.UsernameTakenError
 
     monkeypatch.setattr(user_store, "create", taken)
     creds = {"username": "someone", "password": "long enough"}
@@ -88,7 +88,7 @@ def test_audited_once_per_window(clock, caplog):
         for _ in range(4):
             try:
                 check("eval", "user:7", Limit(1, 3600))
-            except TooManyRequests:
+            except RateLimitExceededError:
                 pass
     assert [r.fields["event"] for r in caplog.records] == ["rate_limit.exceeded"]
     assert caplog.records[0].fields["subject"] == "user:7"

@@ -14,7 +14,7 @@ import time
 import httpx
 
 from app.core.config import AZURE_DI_ENDPOINT, AZURE_DI_KEY
-from app.rag.extractors import Page, UnreadableDocument
+from app.rag.extractors import Page, UnreadableDocumentError
 
 API_VERSION = "2024-11-30"
 POLL_SECONDS = 2
@@ -34,7 +34,7 @@ def _analyze(client: httpx.Client, data: bytes) -> dict:
         headers={"Content-Type": "application/octet-stream"},
     )
     if resp.status_code == 400:  # unsupported, corrupt or password-protected file: permanent
-        raise UnreadableDocument(f"Document Intelligence rejected the file: {resp.text[:300]}")
+        raise UnreadableDocumentError(f"Document Intelligence rejected the file: {resp.text[:300]}")
     resp.raise_for_status()  # 401/429/5xx: raised as is, so the worker retries the document later
 
     status_url = resp.headers["Operation-Location"]
@@ -47,7 +47,7 @@ def _analyze(client: httpx.Client, data: bytes) -> dict:
         if body["status"] == "succeeded":
             return body["analyzeResult"]
         if body["status"] == "failed":
-            raise UnreadableDocument(f"Document Intelligence failed: {body.get('error')}")
+            raise UnreadableDocumentError(f"Document Intelligence failed: {body.get('error')}")
     raise TimeoutError(f"Document Intelligence still running after {TIMEOUT_SECONDS}s")
 
 

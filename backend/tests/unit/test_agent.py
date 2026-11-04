@@ -13,7 +13,7 @@ from app.api import deps
 from app.main import app
 from app.models import User
 from app.rag import knowledge_base
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 from app.services import usage
 from tests.fakes import FakeVectorStore, ScriptedModel
 
@@ -30,7 +30,7 @@ def run_agent(model, monkeypatch, question="Where did I study?"):
 
     async def go():
         async with agent_tools.connect() as tools:
-            return [e async for e in loop.run([Message(role="user", content=question)], tools)]
+            return [e async for e in loop.run([ChatMessage(role="user", content=question)], tools)]
 
     return asyncio.run(go())
 
@@ -100,7 +100,7 @@ def test_tokens_stream_while_the_model_is_still_writing(monkeypatch):
 
     async def go():
         texts = []
-        async for e in loop.run([Message(role="user", content="hi")], []):
+        async for e in loop.run([ChatMessage(role="user", content="hi")], []):
             if e["type"] == "token":
                 texts.append(e["text"])
                 first_seen.set()

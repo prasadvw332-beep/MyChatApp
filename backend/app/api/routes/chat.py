@@ -13,7 +13,7 @@ from app.clients import router as model_router
 from app.clients.llm import llm, title_llm
 from app.core import acl, llm_tracing, metrics
 from app.core.config import CHAT_MODEL, RATE_LIMIT_CHAT
-from app.core.errors import DependencyUnavailable
+from app.core.errors import DependencyUnavailableError
 from app.core.logging import request_id
 from app.guardrails import check_question
 from app.guardrails.content import WITHHELD, AnswerGuard
@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 
 @router.post("/title", dependencies=[limit_per_user("title", RATE_LIMIT_CHAT)])
-async def title(req: ChatRequest):
+async def generate_title(req: ChatRequest):
     """Generate a short chat title from the user's questions (used for the history sidebar)."""
     asked = [m.content.strip()[:300] for m in req.messages if m.role == "user"][:4]
     messages = [SystemMessage(TITLE_SYSTEM)]
@@ -40,7 +40,7 @@ async def title(req: ChatRequest):
     try:
         out = await title_llm.ainvoke(messages)
     except Exception as e:
-        raise DependencyUnavailable("The language model") from e
+        raise DependencyUnavailableError("The language model") from e
     tally = usage.Tally()
     tally.add(out)
     await usage.record("title", tally, CHAT_MODEL)
@@ -57,11 +57,11 @@ async def title(req: ChatRequest):
 
 
 @router.post("/chat", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
-async def chat(req: ChatRequest, user: User = CurrentUser):
+async def answer_chat(req: ChatRequest, user: User = CurrentUser):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
-    principals = acl.principals(user)  # None unless ACL_ENABLED
+    principals = acl.get_principals(user)  # None unless ACL_ENABLED
     # with permissions, two users may see different documents: one shared answer cache would leak
-    cacheable = semantic.cacheable(req.messages) and principals is None
+    cacheable = semantic.is_cacheable(req.messages) and principals is None
     asked_at = time.time()  # before the documents are read: see app/cache/semantic.py
 
     async def retrieve():
@@ -71,9 +71,9 @@ async def chat(req: ChatRequest, user: User = CurrentUser):
         queries = await query.search_queries(req.messages)  # just [question] unless QUERY_REWRITE is set
         try:
             docs = await asyncio.to_thread(knowledge_base.retrieve, question, principals=principals, queries=queries)
-            facts = await asyncio.to_thread(graph.facts, queries[0]) if graph.enabled() else []
+            facts = await asyncio.to_thread(graph.find_facts, queries[0]) if graph.is_enabled() else []
         except Exception as e:
-            raise DependencyUnavailable("Document search") from e
+            raise DependencyUnavailableError("Document search") from e
         return None, docs, facts
 
     # the safety check calls a model too: run it alongside the search, not before it.
@@ -93,7 +93,7 @@ async def chat(req: ChatRequest, user: User = CurrentUser):
     trace = llm_tracing.config("chat", user.id, request_id(), prompt_version=version)  # {} unless Langfuse is set
     # small or large model for this question (app/clients/router.py); just `llm` while routing is off
     model, tier = llm, "small"
-    if model_router.enabled():
+    if model_router.is_enabled():
         model, tier = await model_router.pick(question, sum(len(d.page_content) for d in docs))
 
     async def token_stream():
@@ -141,10 +141,10 @@ async def chat_structured(req: ChatRequest, user: User = CurrentUser):
     question = next((m.content for m in reversed(req.messages) if m.role == "user"), "")
     await check_question(question)
     try:
-        docs = await asyncio.to_thread(knowledge_base.retrieve, question, principals=acl.principals(user))
+        docs = await asyncio.to_thread(knowledge_base.retrieve, question, principals=acl.get_principals(user))
     except Exception as e:
-        raise DependencyUnavailable("Document search") from e
+        raise DependencyUnavailableError("Document search") from e
     try:
         return (await structured.answer(question, docs)).model_dump()
     except structured.StructuredOutputError as e:
-        raise DependencyUnavailable("The language model") from e
+        raise DependencyUnavailableError("The language model") from e

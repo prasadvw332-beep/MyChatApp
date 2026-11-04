@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from app.api.deps import limit_per_user
 from app.core.audit import audit
 from app.core.config import RATE_LIMIT_EVAL
-from app.schemas.evals import RunRequest
+from app.schemas.evals import StartEvalRunRequest
 from evals import run_ragas
 
 router = APIRouter(prefix="/evals")
@@ -31,7 +31,7 @@ async def list_runs():
 
 
 @router.get("/status")
-async def status():
+async def get_eval_status():
     return _status
 
 
@@ -46,7 +46,7 @@ async def get_run(run_id: str):
 
 
 @router.post("/run", status_code=202, dependencies=[limit_per_user("eval", RATE_LIMIT_EVAL)])
-async def start_run(req: RunRequest):
+async def start_run(req: StartEvalRunRequest):
     global _task
     if _status.get("running"):
         raise HTTPException(409, "An evaluation is already running.")
@@ -59,12 +59,12 @@ async def start_run(req: RunRequest):
     _status.update(running=True, phase="starting", done=0, total=total,
                    started_at=datetime.now().isoformat(timespec="seconds"))
 
-    def progress(phase: str, done: int, total: int) -> None:
+    def report_progress(phase: str, done: int, total: int) -> None:
         _status.update(phase=phase, done=done, total=total)
 
-    async def job():
+    async def run_eval_job():
         try:
-            result = await run_ragas.run(req.metrics, req.limit, progress=progress)
+            result = await run_ragas.run(req.metrics, req.limit, progress=report_progress)
             _status.update(running=False, phase="done", run_id=result["id"])
         except ImportError:
             _status.update(running=False, phase="error",
@@ -74,5 +74,5 @@ async def start_run(req: RunRequest):
                            error=f"{type(e).__name__}: {e} (are Ollama, Qdrant and the judge model '{run_ragas.EVAL_MODEL}' available?)")
 
     audit("eval.run_started", metrics=req.metrics, limit=req.limit)
-    _task = asyncio.create_task(job())  # keep a reference so it isn't garbage-collected
+    _task = asyncio.create_task(run_eval_job())  # keep a reference so it isn't garbage-collected
     return _status

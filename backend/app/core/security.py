@@ -77,7 +77,7 @@ _failures: dict[str, list[float]] = {}
 WINDOW, MAX_FAILURES = 300, 5
 
 
-def throttled(key: str) -> bool:
+def is_throttled(key: str) -> bool:
     now = time.monotonic()
     recent = [t for t in _failures.get(key, []) if now - t < WINDOW]
     _failures[key] = recent

@@ -37,7 +37,7 @@ MAX_PER_PAGE = 4
 _model = ChatOllama(model=VISION_MODEL, base_url=OLLAMA_URL, temperature=0, num_predict=400) if VISION_MODEL else None
 
 
-def enabled() -> bool:
+def is_enabled() -> bool:
     return _model is not None
 
 

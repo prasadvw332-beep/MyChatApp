@@ -43,7 +43,7 @@ EXTRACT = (
 MAX_FACTS = 30
 
 
-def enabled() -> bool:
+def is_enabled() -> bool:
     return GRAPH_RAG
 
 
@@ -95,7 +95,7 @@ def index(doc_id: str, docs: list[Document]) -> int:
     return stored
 
 
-def facts(question: str, hops: int = 2) -> list[str]:
+def find_facts(question: str, hops: int = 2) -> list[str]:
     """Relations around the entities the question names, as lines: "Ravi -works_on-> Project Atlas"."""
     q = question.lower()
     with SessionLocal() as db:

@@ -5,7 +5,7 @@ import io
 import docx
 import pytest
 
-from app.rag.chunking import UnreadableDocument, chunk
+from app.rag.chunking import UnreadableDocumentError, chunk
 
 
 def _docx(build) -> bytes:
@@ -48,5 +48,5 @@ def test_docx_tables_keep_rows_in_order():
 
 @pytest.mark.parametrize("data", [b"not a zip file", _docx(lambda d: None)])
 def test_broken_or_empty_docx_is_unreadable(data):
-    with pytest.raises(UnreadableDocument):
+    with pytest.raises(UnreadableDocumentError):
         chunk("bad.docx", data)

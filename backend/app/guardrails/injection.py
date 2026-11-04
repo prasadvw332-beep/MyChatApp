@@ -24,7 +24,7 @@ import unicodedata
 
 from langchain_core.documents import Document
 
-from app.core.errors import Blocked
+from app.core.errors import RequestBlockedError
 from app.guardrails import events
 
 # rules for any text, the user's message included
@@ -79,7 +79,7 @@ def check_question(question: str) -> None:
         return
     rule = detect(question)
     if rule and events.trip("injection_input", rule=rule):
-        raise Blocked(INJECTION_MESSAGE)
+        raise RequestBlockedError(INJECTION_MESSAGE)
 
 
 def screen_documents(docs: list[Document]) -> list[Document]:

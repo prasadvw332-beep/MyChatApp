@@ -43,11 +43,11 @@ SCOPES = "User.Read GroupMember.Read.All"
 MULTI_TENANT = {"organizations", "common"}
 
 
-def enabled() -> bool:
+def is_enabled() -> bool:
     return bool(ENTRA_TENANT_ID) or "login.microsoftonline.com" in OIDC_ISSUER
 
 
-def multi_tenant() -> bool:
+def is_multi_tenant() -> bool:
     return ENTRA_TENANT_ID in MULTI_TENANT
 
 

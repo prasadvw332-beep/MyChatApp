@@ -18,13 +18,13 @@ def stored(monkeypatch):
         rows[row.user_id, row.chat_id, row.position] = row
         return before and before.rating
 
-    monkeypatch.setattr(feedback_store, "put", put)
+    monkeypatch.setattr(feedback_store, "upsert", put)
 
     def remove(user_id, chat_id, position=None):
         for key in [k for k in rows if k[:2] == (user_id, chat_id) and position in (None, k[2])]:
             del rows[key]
 
-    monkeypatch.setattr(feedback_store, "remove", remove)
+    monkeypatch.setattr(feedback_store, "delete", remove)
     return rows
 
 

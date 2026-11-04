@@ -42,12 +42,12 @@ def logs():
 @pytest.fixture
 def session(monkeypatch):
     """A client with a real session cookie for USER, resolved through the real current_user dependency."""
-    monkeypatch.setattr(user_store, "by_id", lambda uid: USER if uid == USER.id else None)
+    monkeypatch.setattr(user_store, "get_by_id", lambda uid: USER if uid == USER.id else None)
     return TestClient(app, cookies={security.COOKIE: security.make_token(USER)})
 
 
 def test_authenticated_requests_log_the_user_id(logs, session, monkeypatch):
-    monkeypatch.setattr(chat_store, "list_for", lambda uid: [])
+    monkeypatch.setattr(chat_store, "list_for_user", lambda uid: [])
     session.get("/chats")
 
     access = logs.named("app.access")[-1]
@@ -72,7 +72,7 @@ def test_upload_is_audited_with_who_and_what(logs, session, monkeypatch):
 
 def test_login_audit_records_outcome_but_never_the_password(client, logs, monkeypatch):
     security.clear_failures("alice|testclient")
-    monkeypatch.setattr(user_store, "by_username", lambda name: USER if name == "alice" else None)
+    monkeypatch.setattr(user_store, "get_by_username", lambda name: USER if name == "alice" else None)
 
     client.post("/auth/login", json={"username": "alice", "password": "wrong-password"})
     client.post("/auth/login", json={"username": "nobody", "password": "whatever-pw"})

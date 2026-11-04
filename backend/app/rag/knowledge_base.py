@@ -19,7 +19,7 @@ from app.clients.vector_store import store as default_store
 from app.core import metrics
 from app.core.acl import PUBLIC
 from app.core.config import MIN_SCORE, RERANK_CANDIDATES
-from app.core.errors import Conflict
+from app.core.errors import ConflictError
 from app.core.telemetry import span
 from app.guardrails import injection, pii
 from app.rag import fusion, graph, rerank
@@ -32,7 +32,7 @@ TOP_K = 5
 store: VectorStore = default_store
 
 
-class DuplicateDocument(Conflict):
+class DuplicateDocumentError(ConflictError):
     """The same file content is already in the knowledge base."""
 
     code = "duplicate_document"
@@ -51,7 +51,7 @@ def ingest(filename: str, data: bytes, acl: list[str] | None = None) -> dict:
     doc_store.mark_ready(doc_id, len(docs))
     for old in old_ids - {doc_id}:
         delete_document(old)
-    if graph.enabled():
+    if graph.is_enabled():
         graph.index(doc_id, docs)
     semantic.forget_all()  # cached answers were written without this document
     return {"doc_id": doc_id, "filename": filename, "chunks": len(docs)}
@@ -66,7 +66,7 @@ def index(doc_id: str, filename: str, data: bytes, acl: list[str] | None = None)
     docs, ids = _chunks(doc_id, filename, data, acl or [PUBLIC])
     store.delete_doc(doc_id)
     store.add(docs, ids=ids)
-    if graph.enabled():
+    if graph.is_enabled():
         graph.index(doc_id, docs)
     semantic.forget_all()
     return len(docs)
@@ -86,7 +86,7 @@ def set_acl(doc_id: str, acl: list[str]) -> bool:
 def _reject_duplicate(digest: str) -> None:
     dup = doc_store.find_duplicate(digest)
     if dup:
-        raise DuplicateDocument(f"This file is already in the knowledge base as '{dup.filename}'.")
+        raise DuplicateDocumentError(f"This file is already in the knowledge base as '{dup.filename}'.")
 
 
 def _chunks(doc_id: str, filename: str, data: bytes, acl: list[str]) -> tuple[list[Document], list[str]]:
@@ -110,8 +110,8 @@ def _register(doc_id: str, filename: str, data: bytes, digest: str, acl: list[st
     """Metadata row first: its unique hash stops two simultaneous uploads of the same file."""
     try:
         doc_store.create(doc_id, filename, data, digest, acl=acl)
-    except doc_store.Duplicate:
-        raise DuplicateDocument("This file is already in the knowledge base.") from None
+    except doc_store.DuplicateContentError:
+        raise DuplicateDocumentError("This file is already in the knowledge base.") from None
 
 
 def _save(doc_id: str, filename: str, data: bytes, docs: list[Document], ids: list[str]) -> None:
@@ -160,7 +160,7 @@ def retrieve(question: str, k: int = TOP_K, principals: list[str] | None = None,
     """
     queries = [q for q in (queries or [question]) if q.strip()] or [question]
     # with a reranker, fetch more candidates than needed: it picks the best k of them
-    fetch = max(k, RERANK_CANDIDATES) if rerank.enabled() else k
+    fetch = max(k, RERANK_CANDIDATES) if rerank.is_enabled() else k
     with span("rag.retrieve", k=k, queries=len(queries)) as s, metrics.retrieval_duration.time():
         rankings = [store.search(q, k=fetch, acl=principals) for q in queries]
         best = max((score for hits in rankings for _, score in hits), default=0.0)
@@ -170,7 +170,7 @@ def retrieve(question: str, k: int = TOP_K, principals: list[str] | None = None,
     if best < MIN_SCORE:
         metrics.retrieval_no_context.inc()
         return []
-    docs = fusion.rrf([[doc for doc, _ in hits] for hits in rankings], key=_chunk_key, limit=fetch)
+    docs = fusion.reciprocal_rank_fusion([[doc for doc, _ in hits] for hits in rankings], key=_chunk_key, limit=fetch)
     docs = rerank.rerank(question, docs, k)  # without a reranker: the first k
     # chunks are shared by all users: one carrying instructions must not reach anyone's prompt
     return injection.screen_documents(docs)

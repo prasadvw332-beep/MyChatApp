@@ -31,7 +31,7 @@ STOPWORDS = set(
 )
 
 
-def tokens(text: str) -> list[str]:
+def tokenize(text: str) -> list[str]:
     return [t for t in re.findall(r"\w+", text.lower()) if t not in STOPWORDS and len(t) > 1]
 
 
@@ -45,7 +45,7 @@ def _vector(weights: dict[int, float]) -> tuple[list[int], list[float]]:
 
 def document_vector(text: str) -> tuple[list[int], list[float]]:
     """(indices, values) for a chunk: the BM25 term-frequency part of each token's weight."""
-    toks = tokens(text)
+    toks = tokenize(text)
     length_norm = 1 - B + B * len(toks) / AVG_TOKENS
     weights: dict[int, float] = {}
     for token, tf in Counter(toks).items():
@@ -56,4 +56,4 @@ def document_vector(text: str) -> tuple[list[int], list[float]]:
 
 def query_vector(text: str) -> tuple[list[int], list[float]]:
     """(indices, values) for a query: each distinct token once; Qdrant multiplies in the IDF."""
-    return _vector({_index(t): 1.0 for t in set(tokens(text))})
+    return _vector({_index(t): 1.0 for t in set(tokenize(text))})

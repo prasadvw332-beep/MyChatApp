@@ -9,7 +9,7 @@ and a new version is tested on part of the traffic before it replaces the old on
 Assignment is by user, not by request (a hash of the user id): one person always sees the same
 version, so a chat doesn't change style halfway, and their feedback counts for one side only.
 Every answer records its version (prompt_runs, keyed by request id). Feedback carries the same
-request id, so the result is one query: thumbs-up rate per version (results(), GET
+request id, so the result is one query: thumbs-up rate per version (get_results(), GET
 /prompts/experiments). The evals (RAGAS) are the offline half: run them per version before
 exposing users to it at all.
 """
@@ -60,7 +60,7 @@ def record(request_id: str, user_id: int | None, prompt: str, version: str) -> N
                          created_at=datetime.now(UTC)))
 
 
-def results(days: int = 30) -> list[dict]:
+def get_results(days: int = 30) -> list[dict]:
     """Per version: answers given, how many were rated, and the share rated up."""
     since = datetime.now(UTC) - timedelta(days=days)
     query = (

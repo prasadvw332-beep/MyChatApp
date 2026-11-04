@@ -9,7 +9,7 @@ from app.core.db import SessionLocal
 from app.models import User
 
 
-class UsernameTaken(Exception):
+class UsernameTakenError(Exception):
     pass
 
 
@@ -19,16 +19,16 @@ def create(username: str, password_hash: str) -> User:
         with SessionLocal.begin() as db:
             db.add(user)
     except IntegrityError:
-        raise UsernameTaken() from None
+        raise UsernameTakenError() from None
     return user
 
 
-def by_username(username: str) -> User | None:
+def get_by_username(username: str) -> User | None:
     with SessionLocal() as db:
         return db.scalars(select(User).where(User.username == username)).first()
 
 
-def by_id(user_id: int) -> User | None:
+def get_by_id(user_id: int) -> User | None:
     with SessionLocal() as db:
         return db.get(User, user_id)
 

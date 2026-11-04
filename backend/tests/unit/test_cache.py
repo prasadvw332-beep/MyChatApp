@@ -13,7 +13,7 @@ from app.clients.answer_store import QdrantAnswerStore
 from app.clients.llm import PrefixedEmbeddings
 from app.rag import knowledge_base as kb
 from app.repositories import usage_store
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 from tests.fakes import (
     FakeDocStore,
     FakeStorage,
@@ -162,9 +162,9 @@ def test_an_answer_written_from_the_old_documents_is_never_served(answers):
 
 
 def test_only_a_chats_first_question_is_cacheable(answers):
-    assert semantic.cacheable([Message(role="user", content="hi")])
-    assert not semantic.cacheable([Message(role="user", content="hi"), Message(role="assistant", content="hello"),
-                                   Message(role="user", content="and his email?")])
+    assert semantic.is_cacheable([ChatMessage(role="user", content="hi")])
+    assert not semantic.is_cacheable([ChatMessage(role="user", content="hi"), ChatMessage(role="assistant", content="hello"),
+                                   ChatMessage(role="user", content="and his email?")])
 
 
 def test_a_qdrant_failure_is_a_miss_not_an_error(answers, metric, monkeypatch):

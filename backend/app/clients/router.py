@@ -33,7 +33,7 @@ CLASSIFY = ("Classify the user's question. Answer 'complex' if it needs reasonin
             "things, multi-step analysis or a long structured answer; otherwise 'simple'. One word.")
 
 
-def enabled() -> bool:
+def is_enabled() -> bool:
     return LLM_ROUTER != "off" and bool(ROUTER_LARGE_MODEL)
 
 
@@ -67,7 +67,7 @@ async def _llm_says_complex(question: str) -> bool:
 
 async def pick(question: str, context_chars: int = 0) -> tuple[object, str]:
     """(model to answer with, "small" | "large"). Never fails: on a router error, the default model."""
-    if not enabled():
+    if not is_enabled():
         return llm, "small"
     try:
         hard = _heuristic(question, context_chars) if LLM_ROUTER == "heuristic" else await _llm_says_complex(question)

@@ -21,7 +21,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from app.clients.llm import utility_llm
 from app.core.config import QUERY_REWRITE, QUERY_VARIANTS
 from app.core.telemetry import span
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ HYDE = (
 )
 
 
-async def search_queries(history: list[Message]) -> list[str]:
+async def search_queries(history: list[ChatMessage]) -> list[str]:
     """What to search for. Never fails: on any model error, the user's own last message."""
     question = next((m.content for m in reversed(history) if m.role == "user"), "")
     if QUERY_REWRITE == "off" or not question.strip():
@@ -62,7 +62,7 @@ async def _ask(system: str, text: str) -> str:
     return (out.content or "").strip()
 
 
-async def _condense(history: list[Message]) -> str:
+async def _condense(history: list[ChatMessage]) -> str:
     convo = "\n".join(f"{m.role}: {m.content[:500]}" for m in history[-6:])  # the recent turns are enough
     return await _ask(CONDENSE, convo) or history[-1].content
 

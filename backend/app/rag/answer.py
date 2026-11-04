@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from app.guardrails import pii
 from app.guardrails.injection import fence, with_canary
 from app.prompts.rag import PLAIN_PROMPT, RAG_PROMPT
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 
 
 def format_context(docs: list[Document], facts: list[str] | None = None) -> str:
@@ -16,7 +16,7 @@ def format_context(docs: list[Document], facts: list[str] | None = None) -> str:
     return context
 
 
-def build_messages(history: list[Message], docs: list[Document], facts: list[str] | None = None,
+def build_messages(history: list[ChatMessage], docs: list[Document], facts: list[str] | None = None,
                    rag_prompt: str = RAG_PROMPT) -> list[BaseMessage]:
     redact = pii.redact if pii.before_llm() else (lambda text: text)  # PII_REDACTION=llm|both
     context = redact(format_context(docs, facts)) if docs or facts else ""

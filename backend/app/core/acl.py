@@ -21,7 +21,7 @@ from app.models import User
 PUBLIC = "public"
 
 
-def principals(user: User | None) -> list[str] | None:
+def get_principals(user: User | None) -> list[str] | None:
     """The principals to filter by, or None when permissions are off (everyone sees everything)."""
     if not ACL_ENABLED:
         return None

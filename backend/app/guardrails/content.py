@@ -23,7 +23,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.clients import llm
 from app.core import metrics
 from app.core.config import GUARD_BLOCK_CATEGORIES, GUARD_MODEL
-from app.core.errors import Blocked
+from app.core.errors import RequestBlockedError
 from app.guardrails import events
 from app.guardrails.injection import CANARY
 from app.services import usage
@@ -75,16 +75,16 @@ def parse_verdict(text: str) -> set[str]:
     return set(re.findall(r"S\d+", rest.upper())) or {UNSPECIFIED}
 
 
-def blocked(categories: set[str]) -> set[str]:
+def filter_blocked_categories(categories: set[str]) -> set[str]:
     return {c for c in categories if c in GUARD_BLOCK_CATEGORIES or c == UNSPECIFIED}
 
 
 async def check_question(question: str) -> None:
     if not events.ACTIVE:
         return
-    found = blocked(await classify(question))
+    found = filter_blocked_categories(await classify(question))
     if found and events.trip("content_input", categories=",".join(sorted(found))):
-        raise Blocked(CONTENT_MESSAGE + (SELF_HARM_NOTE if "S11" in found else ""))
+        raise RequestBlockedError(CONTENT_MESSAGE + (SELF_HARM_NOTE if "S11" in found else ""))
 
 
 class AnswerGuard:
@@ -110,7 +110,7 @@ class AnswerGuard:
     async def finish(self) -> str | None:
         if not events.ACTIVE or not self.text.strip():
             return None
-        found = blocked(await classify(self.question, self.text))
+        found = filter_blocked_categories(await classify(self.question, self.text))
         if found and events.trip("content_output", categories=",".join(sorted(found))):
             return WITHHELD_CONTENT
         return None

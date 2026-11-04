@@ -27,7 +27,7 @@ MAX_IN_PROMPT = 20
 MAX_CHARS = 300
 
 
-def recent(user_id: int, limit: int = MAX_IN_PROMPT) -> list[str]:
+def list_recent(user_id: int, limit: int = MAX_IN_PROMPT) -> list[str]:
     with SessionLocal() as db:
         rows = db.scalars(select(UserMemory.text).where(UserMemory.user_id == user_id)
                           .order_by(UserMemory.created_at.desc()).limit(limit))
@@ -36,7 +36,7 @@ def recent(user_id: int, limit: int = MAX_IN_PROMPT) -> list[str]:
 
 def prompt_block(user_id: int) -> str:
     """Text appended to the agent's system prompt; empty when nothing is stored."""
-    facts = recent(user_id)
+    facts = list_recent(user_id)
     if not facts:
         return ""
     return "\n\nWhat you know about this user from earlier chats:\n" + "\n".join(f"- {f}" for f in facts)

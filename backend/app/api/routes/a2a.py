@@ -24,7 +24,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from app.agents import loop
 from app.core.audit import audit
 from app.core.config import A2A_TOKEN, OIDC_REDIRECT_URI
-from app.schemas.chat import MAX_MESSAGE_CHARS, Message
+from app.schemas.chat import MAX_MESSAGE_CHARS, ChatMessage
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ async def a2a(request: Request, authorization: str = Header("")):
 
     tools = getattr(request.app.state, "agent_tools", None) or []
     answer, sources = [], []
-    async for event in loop.run([Message(role="user", content=text)], tools):
+    async for event in loop.run([ChatMessage(role="user", content=text)], tools):
         if event["type"] == "token":
             answer.append(event["text"])
         elif event["type"] == "sources":

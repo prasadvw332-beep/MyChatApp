@@ -27,14 +27,14 @@ from pathlib import Path
 
 from app.agents import loop
 from app.agents import tools as agent_tools
-from app.schemas.chat import Message
+from app.schemas.chat import ChatMessage
 
 TASKS = Path(__file__).parent / "agent_tasks.jsonl"
 
 
 async def run_task(task: dict, tools) -> dict:
     calls, answer = [], []
-    async for event in loop.run([Message(role="user", content=task["task"])], tools):
+    async for event in loop.run([ChatMessage(role="user", content=task["task"])], tools):
         if event["type"] == "tool":
             calls.append(event["name"])
         elif event["type"] == "token":

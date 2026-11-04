@@ -16,7 +16,7 @@ async def current_user(request: Request) -> User:
     # async on purpose: FastAPI runs sync dependencies in a worker thread, and the user id set
     # below would stay in that thread instead of reaching the route's (and access log's) log lines
     user_id = user_id_from_token(request.cookies.get(COOKIE))
-    if user_id is not None and (user := await asyncio.to_thread(user_store.by_id, user_id)):
+    if user_id is not None and (user := await asyncio.to_thread(user_store.get_by_id, user_id)):
         set_user_id(user.id)
         trace.get_current_span().set_attribute("enduser.id", user.id)  # "show me user 9's slow requests"
         return user

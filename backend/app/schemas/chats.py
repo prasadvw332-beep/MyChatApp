@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-class MessageIn(BaseModel):
+class SaveChatMessage(BaseModel):
     role: str
     content: str
     ui: str | None = None
@@ -14,9 +14,9 @@ class MessageIn(BaseModel):
     at: int | None = None  # ms since epoch
 
 
-class ChatIn(BaseModel):
+class SaveChatRequest(BaseModel):
     title: str = Field(max_length=500)
     titleBy: str | None = None
     titledAt: int | None = None
     updatedAt: int  # ms since epoch
-    messages: list[MessageIn]
+    messages: list[SaveChatMessage]

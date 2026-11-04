@@ -27,7 +27,7 @@ _postgres: BaseCheckpointSaver | None = None
 _lock = asyncio.Lock()
 
 
-async def saver() -> BaseCheckpointSaver:
+async def get_saver() -> BaseCheckpointSaver:
     global _postgres
     if AGENT_CHECKPOINTER != "postgres":
         return memory

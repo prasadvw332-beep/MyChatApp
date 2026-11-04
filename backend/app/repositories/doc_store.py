@@ -20,7 +20,7 @@ def find_duplicate(digest: str) -> Document | None:
         return db.scalars(select(Document).where(Document.sha256 == digest, Document.status == DocStatus.READY)).first()
 
 
-class Duplicate(Exception):
+class DuplicateContentError(Exception):
     """A document with the same content hash already exists."""
 
 
@@ -28,7 +28,7 @@ def create(
     doc_id: str, filename: str, data: bytes, digest: str,
     status: DocStatus = DocStatus.INDEXING, batch_id: int | None = None, acl: list[str] | None = None,
 ) -> None:
-    """Add the row for a new document (direct upload, or queued with a batch_id). Raises Duplicate."""
+    """Add the row for a new document (direct upload, or queued with a batch_id). Raises DuplicateContentError."""
     try:
         with SessionLocal.begin() as db:
             db.add(Document(
@@ -38,7 +38,7 @@ def create(
                 acl=acl or ["public"],
             ))
     except IntegrityError:
-        raise Duplicate() from None
+        raise DuplicateContentError() from None
 
 
 def _ext(filename: str) -> str:
@@ -69,7 +69,7 @@ def ids_for_filename(filename: str) -> set[str]:
         return set(db.scalars(select(Document.doc_id).where(Document.filename == filename)))
 
 
-def _out(d: Document) -> dict:
+def _to_dict(d: Document) -> dict:
     return {
         "doc_id": d.doc_id, "filename": d.filename, "chunks": d.chunks, "size_bytes": d.size_bytes,
         "ext": d.ext, "status": d.status, "error": d.error, "tags": d.tags or [], "acl": d.acl or ["public"],
@@ -84,7 +84,7 @@ def list_all(principals: list[str] | None = None) -> list[dict]:
         # JSONB ?| : "does the acl array contain any of these strings", served by the GIN index
         query = query.where(Document.acl.has_any(principals))
     with SessionLocal() as db:
-        return [_out(d) for d in db.scalars(query).all()]
+        return [_to_dict(d) for d in db.scalars(query).all()]
 
 
 def acl_of(doc_id: str) -> list[str] | None:
@@ -109,7 +109,7 @@ def set_tags(doc_id: str, tags: list[str]) -> dict | None:
         if not doc:
             return None
         doc.tags = tags
-        return _out(doc)
+        return _to_dict(doc)
 
 
 def backfill(qdrant_docs: list[dict], storage) -> int:

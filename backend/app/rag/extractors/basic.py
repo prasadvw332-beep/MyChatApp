@@ -13,7 +13,7 @@ from docx.table import Table
 from pypdf import PdfReader
 
 from app.rag import vision
-from app.rag.extractors import IMAGE_TYPES, Page, UnreadableDocument
+from app.rag.extractors import IMAGE_TYPES, Page, UnreadableDocumentError
 
 log = logging.getLogger(__name__)
 
@@ -25,14 +25,14 @@ def extract(filename: str, data: bytes) -> list[Page]:
         return [(i + 1, (page.extract_text() or "") + _figures(page)) for i, page in enumerate(reader.pages)]
     if ext == ".docx":
         return [(None, _docx_text(data))]
-    if ext in IMAGE_TYPES and vision.enabled():
+    if ext in IMAGE_TYPES and vision.is_enabled():
         return [(None, vision.describe(data) or "")]
-    raise UnreadableDocument(f"{ext} needs a richer extractor: set EXTRACTOR=docling, unstructured or azure")
+    raise UnreadableDocumentError(f"{ext} needs a richer extractor: set EXTRACTOR=docling, unstructured or azure")
 
 
 def _figures(page) -> str:
     """'[Figure: ...]' lines for the page's informative images, when a vision model is configured."""
-    if not vision.enabled():
+    if not vision.is_enabled():
         return ""
     try:
         images = list(page.images)[:vision.MAX_PER_PAGE]
@@ -49,7 +49,7 @@ def _docx_text(data: bytes) -> str:
     try:
         document = docx.Document(io.BytesIO(data))
     except Exception as e:  # not a zip / not a Word file
-        raise UnreadableDocument(f"Not a valid .docx file: {e}") from e
+        raise UnreadableDocumentError(f"Not a valid .docx file: {e}") from e
     lines: list[str] = []
     for block in document.iter_inner_content():  # paragraphs and tables in document order
         if isinstance(block, Table):

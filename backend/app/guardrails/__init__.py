@@ -13,6 +13,6 @@ from app.guardrails import content, injection
 
 
 async def check_question(question: str) -> None:
-    """Raise Blocked if the user's newest message is an injection attempt or asks for blocked content."""
+    """Raise RequestBlockedError if the user's newest message is an injection attempt or asks for blocked content."""
     injection.check_question(question)  # instant, so it runs before the model call
     await content.check_question(question)

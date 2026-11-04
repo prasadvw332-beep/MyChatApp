@@ -3,6 +3,6 @@
 from pydantic import BaseModel
 
 
-class Credentials(BaseModel):
+class CredentialsRequest(BaseModel):
     username: str
     password: str

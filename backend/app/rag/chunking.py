@@ -20,7 +20,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # re-exported: the upload routes and the CLI check file types against SUPPORTED, tests import the error
 from app.rag.extractors import SUPPORTED as SUPPORTED
-from app.rag.extractors import UnreadableDocument as UnreadableDocument
+from app.rag.extractors import UnreadableDocumentError as UnreadableDocumentError
 from app.rag.extractors import extract
 
 MIN_CHUNK = 250  # chars; smaller trailing pieces are merged into the previous chunk
@@ -92,7 +92,7 @@ def _sections(text: str) -> list[tuple[str, int, str]]:
 def chunk(filename: str, data: bytes) -> list[Document]:
     pages = [(p, t) for p, t in extract(filename, data) if t.strip()]
     if not pages:
-        raise UnreadableDocument(
+        raise UnreadableDocumentError(
             "No readable text found in this file (a scanned PDF needs OCR: EXTRACTOR=docling, unstructured or azure)."
         )
 

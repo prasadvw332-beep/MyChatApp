@@ -15,7 +15,7 @@ router = APIRouter(prefix="/me")
 
 
 @router.get("/export")
-async def export(user: User = CurrentUser):
+async def export_user_data(user: User = CurrentUser):
     """Everything stored about you, as one JSON file (right of access / portability)."""
     data = await asyncio.to_thread(privacy.export, user)
     audit("privacy.export")

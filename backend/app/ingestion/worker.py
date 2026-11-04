@@ -19,7 +19,7 @@ from app.core.config import INGEST_MAX_ATTEMPTS
 from app.core.logging import set_request_id, setup_logging
 from app.ingestion import queue
 from app.rag import knowledge_base
-from app.rag.chunking import UnreadableDocument
+from app.rag.chunking import UnreadableDocumentError
 
 log = logging.getLogger("worker")
 
@@ -52,7 +52,7 @@ def _process(doc) -> None:
     set_request_id(f"doc-{doc.doc_id[:12]}")  # every log line about this document carries its id
     try:
         chunks = knowledge_base.index(doc.doc_id, doc.filename, storage.read(doc.minio_key)[0], doc.acl)
-    except UnreadableDocument as e:  # retrying won't change that
+    except UnreadableDocumentError as e:  # retrying won't change that
         log.warning("failed %s: %s", doc.filename, e)
         queue.fail(doc, str(e), retry=False)
         metrics.ingest_documents.labels("failed").inc()

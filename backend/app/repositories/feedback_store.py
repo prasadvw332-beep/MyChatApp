@@ -1,6 +1,7 @@
 """Answer feedback in PostgreSQL (repository: the only module that touches the feedback table)."""
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete as sql_delete  # this module's own delete() is the repository method
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
 from app.core.db import SessionLocal
@@ -9,7 +10,7 @@ from app.models import Feedback
 _KEY = ("user_id", "chat_id", "position")
 
 
-def put(row: Feedback) -> int | None:
+def upsert(row: Feedback) -> int | None:
     """Create, or replace the user's earlier rating of the same answer (keeping when it was first given).
     Returns the earlier rating, None if there was none."""
     values = {c.name: getattr(row, c.name) for c in Feedback.__table__.columns if c.name != "id"}
@@ -22,9 +23,9 @@ def put(row: Feedback) -> int | None:
     return before
 
 
-def remove(user_id: int, chat_id: str, position: int | None = None) -> None:
+def delete(user_id: int, chat_id: str, position: int | None = None) -> None:
     """The rating of one answer, or (position None) of every answer in the chat."""
-    stmt = delete(Feedback).where(Feedback.user_id == user_id, Feedback.chat_id == chat_id)
+    stmt = sql_delete(Feedback).where(Feedback.user_id == user_id, Feedback.chat_id == chat_id)
     if position is not None:
         stmt = stmt.where(Feedback.position == position)
     with SessionLocal.begin() as db:

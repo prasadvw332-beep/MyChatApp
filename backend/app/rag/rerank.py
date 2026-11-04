@@ -24,14 +24,14 @@ from app.core.telemetry import span
 log = logging.getLogger(__name__)
 
 
-def enabled() -> bool:
+def is_enabled() -> bool:
     return RERANK != "off"
 
 
 def rerank(question: str, docs: list[Document], top_k: int) -> list[Document]:
     """The best `top_k` of `docs` for `question`. On a reranker failure: the original order (logged),
     because a worse ranking beats no answer."""
-    if not enabled() or len(docs) <= 1:
+    if not is_enabled() or len(docs) <= 1:
         return docs[:top_k]
     with span("rag.rerank", mode=RERANK, candidates=len(docs)):
         try:

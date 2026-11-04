@@ -51,7 +51,7 @@ def add(batch_id: int, filename: str, data: bytes) -> str | None:
     storage.save(doc_id, filename, data)
     try:
         doc_store.create(doc_id, filename, data, digest, status=DocStatus.QUEUED, batch_id=batch_id)
-    except doc_store.Duplicate:  # same content already queued or indexed (unique sha256)
+    except doc_store.DuplicateContentError:  # same content already queued or indexed (unique sha256)
         storage.delete(doc_id)
         return None
     return doc_id

@@ -32,25 +32,25 @@ class AppError(Exception):
         self.message = message or self.message
 
 
-class NotFound(AppError):
+class NotFoundError(AppError):
     status, code, message = 404, "not_found", "Not found."
 
 
-class Conflict(AppError):
+class ConflictError(AppError):
     status, code, message = 409, "conflict", "This conflicts with existing data."
 
 
-class InvalidInput(AppError):
+class InvalidInputError(AppError):
     status, code, message = 422, "invalid_input", "The request is not valid."
 
 
-class Blocked(AppError):
+class RequestBlockedError(AppError):
     """A guardrail refused the request (app/guardrails/). The message tells the user why, never which rule."""
 
     status, code, message = 400, "blocked", "This message can't be answered."
 
 
-class TooManyRequests(AppError):
+class RateLimitExceededError(AppError):
     """A rate limit was hit (app/core/rate_limit.py)."""
 
     status, code = 429, "rate_limited"
@@ -61,7 +61,7 @@ class TooManyRequests(AppError):
         self.headers = {"Retry-After": str(retry_after)}
 
 
-class DependencyUnavailable(AppError):
+class DependencyUnavailableError(AppError):
     """A backing service (Ollama, Qdrant, MinIO, PostgreSQL) failed. Raise it `from` the original error."""
 
     status, code = 503, "dependency_unavailable"

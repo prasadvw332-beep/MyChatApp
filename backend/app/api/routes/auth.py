@@ -9,11 +9,11 @@ from app.api.deps import CurrentUser, limit_per_ip
 from app.core import entra, oidc, security
 from app.core.audit import audit
 from app.core.config import ACL_ENABLED, COOKIE_SECURE, RATE_LIMIT_REGISTER
-from app.core.errors import Conflict, InvalidInput
+from app.core.errors import ConflictError, InvalidInputError
 from app.core.logging import set_user_id
 from app.models import User
 from app.repositories import user_store
-from app.schemas.auth import Credentials
+from app.schemas.auth import CredentialsRequest
 
 router = APIRouter(prefix="/auth")
 log = logging.getLogger(__name__)
@@ -31,30 +31,30 @@ def _login(response: Response, user: User) -> dict:
 
 
 @router.post("/register", status_code=201, dependencies=[limit_per_ip("register", RATE_LIMIT_REGISTER)])
-def register(body: Credentials, response: Response):
+def register(body: CredentialsRequest, response: Response):
     username = body.username.strip().lower()
     if not USERNAME.fullmatch(username):
-        raise InvalidInput("Username must be 3-32 characters: letters, numbers, . _ -")
+        raise InvalidInputError("Username must be 3-32 characters: letters, numbers, . _ -")
     if not 8 <= len(body.password) <= 128:
-        raise InvalidInput("Password must be 8-128 characters.")
+        raise InvalidInputError("Password must be 8-128 characters.")
     try:
         user = user_store.create(username, security.hash_password(body.password))
-    except user_store.UsernameTaken:
-        raise Conflict("That username is taken.") from None
+    except user_store.UsernameTakenError:
+        raise ConflictError("That username is taken.") from None
     set_user_id(user.id)
     audit("auth.register", username=username)
     return _login(response, user)
 
 
 @router.post("/login")
-def login(body: Credentials, request: Request, response: Response):
+def login(body: CredentialsRequest, request: Request, response: Response):
     username = body.username.strip().lower()
     ip = request.client.host if request.client else "-"
     key = f"{username}|{ip}"
-    if security.throttled(key):
+    if security.is_throttled(key):
         audit("auth.login.throttled", username=username, ip=ip)
         raise HTTPException(429, "Too many failed attempts. Try again in a few minutes.")
-    user = user_store.by_username(username)
+    user = user_store.get_by_username(username)
     if not security.check_password(user, body.password):
         security.record_failure(key)
         # the reason stays in the log only: the client gets the same message either way
@@ -69,13 +69,13 @@ def login(body: Credentials, request: Request, response: Response):
 @router.get("/config")
 def auth_config():
     """What the login page and the app should offer: an SSO button, a visibility choice on upload."""
-    return {"sso": oidc.enabled(), "acl": ACL_ENABLED}
+    return {"sso": oidc.is_enabled(), "acl": ACL_ENABLED}
 
 
 @router.get("/oidc/login")
 def oidc_login():
     """Start single sign-on: off to the identity provider's login page (app/core/oidc.py)."""
-    if not oidc.enabled():
+    if not oidc.is_enabled():
         raise HTTPException(404, "Single sign-on is not configured.")
     url, flow = oidc.start()
     response = RedirectResponse(url, status_code=302)
@@ -103,7 +103,7 @@ def oidc_callback(request: Request, code: str = "", state: str = "", error: str 
     except Exception:  # e.g. Graph down during an Entra groups overage: log in, but with no group access
         log.exception("could not read the user's groups; continuing without them")
         groups = []
-    subject = entra.subject(claims) if entra.enabled() else claims["sub"]
+    subject = entra.subject(claims) if entra.is_enabled() else claims["sub"]
     # an SSO account has no password of its own: a random, never-shown one keeps /auth/login closed to it
     user = user_store.upsert_sso(subject, oidc.username(claims),
                                  security.hash_password(secrets.token_urlsafe(32)), groups)
@@ -122,7 +122,7 @@ def logout(request: Request, response: Response):
     response.delete_cookie(security.COOKIE, path="/")
     # SSO: the frontend sends the browser here next, or the provider's session logs the user straight back in
     sso_logout = None
-    if oidc.enabled():
+    if oidc.is_enabled():
         try:
             sso_logout = oidc.logout_url()
         except Exception:
@@ -131,5 +131,5 @@ def logout(request: Request, response: Response):
 
 
 @router.get("/me")
-def me(user: User = CurrentUser):
+def get_current_user_profile(user: User = CurrentUser):
     return _public(user)

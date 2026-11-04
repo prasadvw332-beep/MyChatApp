@@ -47,8 +47,8 @@ def test_invalid_tokens_are_rejected(token):
 def test_login_throttle():
     key = "mallory|1.2.3.4"
     for _ in range(security.MAX_FAILURES):
-        assert not security.throttled(key)
+        assert not security.is_throttled(key)
         security.record_failure(key)
-    assert security.throttled(key)
+    assert security.is_throttled(key)
     security.clear_failures(key)
-    assert not security.throttled(key)
+    assert not security.is_throttled(key)

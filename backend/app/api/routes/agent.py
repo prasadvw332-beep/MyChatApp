@@ -12,7 +12,7 @@ from app.agents import loop, memory, sql_tool, supervisor
 from app.api.deps import CurrentUser, limit_per_user
 from app.core import llm_tracing, metrics
 from app.core.config import AGENT_MEMORY, RATE_LIMIT_CHAT
-from app.core.errors import DependencyUnavailable, NotFound
+from app.core.errors import DependencyUnavailableError, NotFoundError
 from app.core.logging import request_id
 from app.guardrails import check_question
 from app.guardrails.content import AnswerGuard
@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 SQL_TOOLS = sql_tool.tools()  # [] unless SQL_AGENT_URL is set
 
 
-class ResumeIn(BaseModel):
+class ResumeAgentRequest(BaseModel):
     thread_id: str = Field(max_length=80)
     approved: bool
 
@@ -34,7 +34,7 @@ def _tools(request: Request, user: User) -> list:
     """Shared tools (MCP, opened at startup) + this user's own (memory) + text-to-SQL."""
     shared = getattr(request.app.state, "agent_tools", None)  # opened by the lifespan in main.py
     if shared is None:
-        raise DependencyUnavailable("The agent")
+        raise DependencyUnavailableError("The agent")
     return [*shared, *(memory.tools_for(user.id) if AGENT_MEMORY else []), *SQL_TOOLS]
 
 
@@ -54,10 +54,10 @@ async def agent_chat(req: ChatRequest, request: Request, user: User = CurrentUse
 
 
 @router.post("/agent/resume", dependencies=[limit_per_user("chat", RATE_LIMIT_CHAT)])
-async def agent_resume(body: ResumeIn, request: Request, user: User = CurrentUser):
+async def agent_resume(body: ResumeAgentRequest, request: Request, user: User = CurrentUser):
     """Continue a run that paused for approval ({"type": "approval_required"}), with the user's decision."""
     if not body.thread_id.startswith(f"{user.id}-"):
-        raise NotFound("No paused run with that id.")  # someone else's run: as if it didn't exist
+        raise NotFoundError("No paused run with that id.")  # someone else's run: as if it didn't exist
     run = loop.resume(body.thread_id, body.approved, _tools(request, user),
                       trace=llm_tracing.config("agent", user.id, request_id()))
     return StreamingResponse(_stream(run, ""), media_type="application/x-ndjson")

@@ -51,7 +51,7 @@ class FakeVectorStore:
 class FakeDocStore:
     """Mirrors doc_store: rows keyed by doc_id, unique content hash."""
 
-    Duplicate = type("Duplicate", (Exception,), {})
+    DuplicateContentError = type("DuplicateContentError", (Exception,), {})
 
     def __init__(self):
         self.rows: dict[str, SimpleNamespace] = {}
@@ -65,7 +65,7 @@ class FakeDocStore:
 
     def create(self, doc_id, filename, data, digest, status="indexing", batch_id=None, acl=None):
         if any(r.sha256 == digest for r in self.rows.values()):
-            raise self.Duplicate()
+            raise self.DuplicateContentError()
         self.rows[doc_id] = SimpleNamespace(doc_id=doc_id, filename=filename, sha256=digest, status=status, chunks=0)
 
     def mark_ready(self, doc_id, chunks):

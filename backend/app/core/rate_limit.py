@@ -23,7 +23,7 @@ from typing import Protocol
 from app.clients.redis_counts import RedisCounts
 from app.core import config, metrics
 from app.core.audit import audit
-from app.core.errors import TooManyRequests
+from app.core.errors import RateLimitExceededError
 from app.repositories import rate_limit_store
 
 log = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ counts: Counts = RedisCounts(config.REDIS_URL) if config.REDIS_URL else rate_lim
 
 
 async def check(name: str, subject: str, limit: Limit | None) -> None:
-    """Counts this request against `name` for `subject` ("user:9", "ip:1.2.3.4"); raises TooManyRequests over the limit."""
+    """Counts this request against `name` for `subject` ("user:9", "ip:1.2.3.4"); raises RateLimitExceededError over the limit."""
     if limit is None or not config.RATE_LIMIT_ENABLED:
         return
     now = time.time()
@@ -78,4 +78,4 @@ async def check(name: str, subject: str, limit: Limit | None) -> None:
     metrics.rate_limited.labels(name).inc()
     if used == limit.count + 1:  # once per window, not once for every rejected request
         audit("rate_limit.exceeded", limit=name, subject=subject)
-    raise TooManyRequests(retry_after=max(1, math.ceil(window_start + limit.seconds - now)))
+    raise RateLimitExceededError(retry_after=max(1, math.ceil(window_start + limit.seconds - now)))

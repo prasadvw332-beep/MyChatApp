@@ -15,7 +15,7 @@ Install:  uv add "unstructured[all-docs]"   plus the system tools Tesseract (OCR
 
 from io import BytesIO
 
-from app.rag.extractors import Page, UnreadableDocument
+from app.rag.extractors import Page, UnreadableDocumentError
 
 NOISE = {"Header", "Footer", "PageNumber", "PageBreak"}
 
@@ -43,7 +43,7 @@ def extract(filename: str, data: bytes) -> list[Page]:
         elements = partition(file=BytesIO(data), metadata_filename=filename, strategy="auto",
                              infer_table_structure=True)
     except ValueError as e:  # unknown or broken file type
-        raise UnreadableDocument(f"Unstructured couldn't read this file: {e}") from e
+        raise UnreadableDocumentError(f"Unstructured couldn't read this file: {e}") from e
 
     pages: dict[int | None, list[str]] = {}
     for element in elements:

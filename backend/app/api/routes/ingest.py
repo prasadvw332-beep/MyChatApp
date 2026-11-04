@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from app.api.deps import limit_per_user
 from app.core.audit import audit
 from app.core.config import INGEST_BATCH_SIZE, MAX_UPLOAD_MB, RATE_LIMIT_UPLOAD
-from app.core.errors import DependencyUnavailable
+from app.core.errors import DependencyUnavailableError
 from app.ingestion import queue
 from app.rag.chunking import SUPPORTED
 
@@ -16,18 +16,18 @@ router = APIRouter(prefix="/ingest")
 
 
 @router.get("/batches")
-async def batches():
+async def list_batches():
     return await asyncio.to_thread(queue.progress)
 
 
 @router.get("/batches/{batch_id}/failures")
-async def failures(batch_id: int):
+async def list_batch_failures(batch_id: int):
     return await asyncio.to_thread(queue.failures, batch_id)
 
 
 # one budget with /upload; a batch request counts once, however many files it holds
 @router.post("/batches", dependencies=[limit_per_user("upload", RATE_LIMIT_UPLOAD)])
-async def create(files: list[UploadFile]):
+async def upload_batch(files: list[UploadFile]):
     """Queue uploaded files, INGEST_BATCH_SIZE per batch. Returns at once; workers do the indexing."""
     rejected = [f.filename for f in files if os.path.splitext(f.filename or "")[1].lower() not in SUPPORTED]
     if rejected:
@@ -45,7 +45,7 @@ async def create(files: list[UploadFile]):
                 doc_id = await asyncio.to_thread(queue.add, batch_id, f.filename, data)
                 queued, skipped = queued + (doc_id is not None), skipped + (doc_id is None)
         except Exception as e:
-            raise DependencyUnavailable("Queueing") from e
+            raise DependencyUnavailableError("Queueing") from e
         finally:
             await asyncio.to_thread(queue.seal, batch_id)
     audit("ingest.batches_created", batches=created, queued=queued, skipped=skipped)

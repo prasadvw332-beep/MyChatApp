@@ -19,7 +19,7 @@ import importlib
 import os
 
 from app.core.config import EXTRACTOR, VISION_MODEL
-from app.core.errors import InvalidInput
+from app.core.errors import InvalidInputError
 
 Page = tuple[int | None, str]  # (page number, text); None when the format has no fixed pages
 
@@ -34,7 +34,7 @@ RICH_TYPES = {".pptx", ".xlsx", ".html", *IMAGE_TYPES}  # docling, unstructured,
 SUPPORTED = BASIC_TYPES | (RICH_TYPES if EXTRACTOR != "basic" else IMAGE_TYPES if VISION_MODEL else set())
 
 
-class UnreadableDocument(InvalidInput, ValueError):
+class UnreadableDocumentError(InvalidInputError, ValueError):
     """The file has no extractable text. Permanent: retrying won't help."""
 
     code = "unreadable_document"
